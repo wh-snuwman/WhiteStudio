@@ -1,3 +1,4 @@
+import { random } from "./random.js";
 import { core } from "./core.js"
 import { eventManger } from './eventManger.js'
 
@@ -258,16 +259,15 @@ class object {
         this._synchronization_pos()
         this._synchronization_size()
     }
+    
 }
-
-
 
 export class gametManager {
     constructor(){
         this.id = 'display-canvas'
         this.path_stylesheet = './applePhi/src/style/style.css'
         this.path_icon = './applePhi/src/icon/default.ico'
-
+        
         document.head.insertAdjacentHTML('afterbegin', `
         <link rel="stylesheet" href="${this.path_stylesheet}">
         <link rel="icon" href="${this.path_icon}">
@@ -314,11 +314,8 @@ export class gametManager {
         this._textCanvas = null
         this.objectList = []
         this.resizeDisplay()
-
-
         window.renderZindex = []
 
-        
         
         window.addEventListener('resize',()=>{
             this.resizeDisplay()
@@ -377,6 +374,7 @@ export class gametManager {
                     this._render(obj)
                 }
             }
+        // this.studio.test()
 
             this.sceneChangeDetect = false
             eventManger.resetState()
@@ -393,6 +391,32 @@ export class gametManager {
         this.objectList.push(obj)
         return obj
     }
+
+
+    rect(pos,size,color=[0,0,0,255]){
+        const obj = this.object(this.sysImg,pos,size)
+        obj.fillColor = color
+        return obj
+    }
+
+    line(pos1,pos2_,thickness=1,color=[0,0,0,255]){
+        const pos2 = pos2_
+        const distance =  this.distanceGet(pos1,pos2)
+        let obj = this.object(this.sysImg,[pos1[0],pos1[1]],[thickness,distance])
+        const dx = pos2[0] - pos1[0];
+        const dy = pos2[1] - pos1[1];
+        const radian = Math.atan2(dy, dx);
+        const degree = (radian * (180 / Math.PI))- 90;
+        obj.rotate(degree,'default',[pos1[0]+thickness/2,pos1[1]+thickness/2])
+        obj.fillColor = color
+        return obj
+    }
+
+    
+    distanceGet(pos1,pos2){
+        return Math.sqrt((pos2[0] - pos1[0])**2 + (pos2[1] - pos1[1])**2)
+    }
+
 
     fill(color=Array){
         const r = color[0]
@@ -481,9 +505,26 @@ export class gametManager {
         this.app.text(text,pos,size,color,font,align)
     }
 
+    test(){
+        this.canvas.toBlob((blob) => {
+        if (!blob) return;
+
+        // 2. Blob 데이터를 가리키는 임시 메모리 URL 생성
+        const blobUrl = URL.createObjectURL(blob);
+
+        // 3. 다운로드 실행
+        const link = document.createElement('a');
+        link.download = 'image.png';
+        link.href = blobUrl;
+        link.click();
+
+        // 4. 메모리 누수 방지를 위한 URL 해제
+        URL.revokeObjectURL(blobUrl);
+        }, 'image/png', 0.95); // (포맷, 품질: 0.0~1.0)
+    }
 
     
-
+    
 
 }
 
@@ -509,4 +550,135 @@ class imageObject {
         this.img.height = size[1]
         this._synchronization_size()
     }
+}
+
+
+export class tileManager{
+    constructor(studio){
+        this.studio = studio
+        this.tile = []
+        
+        this.tileSize_Default = 160
+        this.tileSize = 120
+        this.tileRatio = this.tileSize / this.tileSize_Default
+        // this.chunkSize = 6;
+
+        this.adjX = -this.tileSize *1.5;
+        this.adjY = -this.tileSize *1.5;
+        
+        this.speed = 10
+
+        this.cameraX=0
+        this.cameraY=0
+        this.cameraRun = 1 
+        this.cameraAdjX = 0
+        this.cameraAdjY = 0
+        this.cameraShakeX = 0
+        this.cameraShakeY = 0
+
+        this.upKey=false
+        this.leftKey=false
+        this.downKey=false
+        this.rightKey=false
+        this.isMove=false
+
+        this.moveR=0
+        this.moveL=0
+        this.moveU=0
+        this.moveD=0
+        this.moveX=0
+        this.moveY=0
+        this.moveRc=0
+        this.moveLc=0
+        this.moveUc=0
+        this.moveDc=0
+
+        this.horTileCount = 16
+        this.verTileCount = 9
+
+    }
+
+    init(){
+        this.tile = [] 
+        // this.cameraAdjX = ((this.studio.width-this.tileSize+(1920*(1-this.studio.screenRatio))) / 2)
+        // this.cameraAdjY = ((this.studio.height-(this.tileSize*2)+(1080*(1-this.studio.screenRatio))) / 2)
+        this.cameraAdjX = 0;
+        this.cameraAdjY = 0;
+        for (let i=0; i<this.horTileCount; i++){
+            for (let j=0; j<this.verTileCount; j++){
+                const obj = this.studio.object(this.studio.sysImg,
+                    [(i*this.tileSize)+ this.cameraAdjX + this.cameraX,(j*this.tileSize) + this.cameraAdjY + this.cameraY],
+                    [this.tileSize,this.tileSize]
+                )
+
+                obj.fillColor = [random.random(0,150),random.random(0,90),200,255]
+                this.tile.push({
+                    renderObj: obj,
+                    hitbox: this.studio.object(this.studio.sysImg,obj.pos,obj.size),
+                    horNum: i,//가로줄 넘버
+                    verNum: j,//세로줄 넘버
+                });
+            }
+        }
+    } 
+
+
+    render(){
+        for (let tileObj of this.tile){
+            const renderObj = tileObj.renderObj
+            renderObj.render()
+        }
+    }
+    
+
+
+    _tileObjMove(tileObj,moveX=this.speed,moveY=this.speed){
+        tileObj.renderObj.move([moveX,moveY])
+        tileObj.hitbox.move([moveX,moveY])
+    }
+
+    moveFree(){
+        for (let tileObj of this.tile){
+            const hitbox = tileObj.hitbox
+            const horNum = tileObj.horNum
+            const verNum = tileObj.verNum
+
+            this._tileObjMove(tileObj,5,5)
+
+            // console.log((this.horTileCount*this.tileSize) + this.adjX)
+
+
+            if (hitbox.x > (this.horTileCount*this.tileSize)){
+                this._tileObjMove(tileObj,-this.horTileCount*this.tileSize)
+                tileObj.horNum -= this.horTileCount
+                this.tileRelaod(tileObj)
+                
+            } else if (hitbox.x < this.adjX){
+                hitbox.moveX(this.horTileCount*this.tileSize )
+                tileObj.horNum += this.horTileCount
+                this.tileRelaod(tileObj)
+
+            } else if (hitbox.y > this.verTileCount*this.tileSize  + this.adjY){
+                hitbox.moveY(-this.verTileCount*this.tileSize )
+                tileObj.verNum -= this.verTileCount
+                this.tileRelaod(tileObj)
+            } else if (hitbox.y < this.adjY){ 
+                hitbox.moveY(this.verTileCount*this.tileSize )
+                tileObj.verNum += this.verTileCount
+                this.tileRelaod(tileObj) 
+            }  
+        }
+    }
+
+    switchOpposition(){
+
+    }
+
+    tileRelaod(tile){// 게임내의 시스템에서 사용하는 타일특성 초기화 함수
+        // tile.isBlock = false
+    }; 
+    
+
+
+
 }

@@ -216,24 +216,7 @@ export class applePhi {
 
     
 
-    rect(pos,size,color=[0,0,0,255]){
-        const obj = this.object(this.sysImg,[...pos],[...size])
-        obj.fillColor = color
-        return obj
-    }
-
-    line(pos1,pos2_,thickness=1,color=[0,0,0,255]){
-        const pos2 = pos2_
-        const distance =  this.distanceGet(pos1,pos2)
-        let obj = this.object(this.sysImg,[pos1[0],pos1[1]],[thickness,distance])
-        const dx = pos2[0] - pos1[0];
-        const dy = pos2[1] - pos1[1];
-        const radian = Math.atan2(dy, dx);
-        const degree = (radian * (180 / Math.PI))- 90;
-        this.rotate(obj,degree,'custom',[pos1[0]+thickness/2,pos1[1]+thickness/2])
-        obj.fillColor = color
-        return obj
-    }
+    
 
 
     // fill(r,g,b,a=255){

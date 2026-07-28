@@ -1,21 +1,250 @@
-class imageObject {
-    constructor(app){
-        this.app = app
-        this.img = null
-        this.width = null
-        this.height = null
-        this.size = [this.width,this.height]
-    }
-    _synchronization_size(){
-        this.width = this.img.width
-        this.height = this.img.height
-    }
-    
-    async load(path){
-        this.img = await this.app.loadImage(path);
-        this._synchronization_size()
+constructor(studio){
+        this.studio = studio
+
+        this.adjX = -this.tileSize *1.5;
+        this.adjY = -this.tileSize *1.5;
+        this.tileSize_Default = 160
+        this.tileSize = 120
+        this.tileRatio = this.tileSize / this.tileSize_Default
+        
+        this.TILE = []// 타일객체 저장
+        this.chunkSize = 6;
+        this.cameraX=0
+        this.cameraY=0
+        this.cameraRun = 1 
+        this.cameraAdjX = 0
+        this.cameraAdjY = 0
+        this.cameraShakeX = 0
+        this.cameraShakeY = 0
+
+        this.click_l=false// 클릭여부(한번)
+        this.click_r=false// 클릭여부(한번)
+        this.press_l=false
+        this.press_r=false
+        this.upKey=false
+        this.leftKey=false
+        this.downKey=false
+        this.rightKey=false
+        this.isMove=false
+        this.interaction=false// 상호작용 (기본: E)
+
+        this.moveR=0
+        this.moveL=0
+        this.moveU=0
+        this.moveD=0
+        this.moveX=0
+        this.moveY=0
+        this.wheel=0
+        this.moveRc=0
+        this.moveLc=0
+        this.moveUc=0
+        this.moveDc=0
     }
 
+    cameraMove(x,y){
+        this.cameraX += x
+        this.cameraY += y
+        this.moveLc = x
+        this.moveDc = -y
+    }
 
+    tileRelaod(tile){// 게임내의 시스템에서 사용하는 타일특성 초기화 함수
+        tile.isBlock = false
+    }; 
+
+    mod(n, m){return ((n % m) + m) % m;}// % 보정함수. 나머지가 음수여도 다시양수로 변환
+
+    cameraShake(power){
+        this.cameraShakeX += phi.random(-power,power)
+        this.cameraShakeY += phi.random(-power,power)
+    }
+
+    tileRelocation(){
+        this.TILE = [] 
+        this.cameraAdjX = ((phi.width-this.tileSize+(1920*(1-phi.screenRatio))) / 2)
+        this.cameraAdjY = ((phi.height-(this.tileSize*2)+(1080*(1-phi.screenRatio))) / 2)
+        
+        for (let i=0; i<this.horTileCount; i++){ // 화면의 가로안에 들어가는 타일수 만큼 반복
+            for (let j=0; j<this.verTileCount; j++){ // 화면의 세로안에 들어가는 타일수 만큼 반복
+                this.TILE.push({
+                    obj: phi.object(  // 로직및 시스템용 obj
+                        IMG.GROUND[phi.random(0,3)],
+                        [
+                            (i*this.tileSize)+ this.cameraAdjX + this.cameraX,
+                            (j*this.tileSize) + this.cameraAdjY + this.cameraY],
+                        [
+                            this.tileSize,
+                            this.tileSize
+                        ]
+                    ),
+                    horNum:i,//가로줄 
+                    verNum:j,//세로줄
+                    innerChunkId:0,
+                    chunkId:[],
+                    id:[],
+                    isBlock:false, //일반 통과가능 여부
+                    TILE:0, //타일종류
+                    TILEOBJ:phi.obj(null,[this.cameraX,this.cameraY],[0,0]) //렌더링용
+                });
+            }
+        }
+    } 
+
+    for (let index in state.TILE){
+        let TINF = state.TILE[index]
+        const obj = TINF.obj
+        
+        // 타일 물리엔진. 타일이 통과불가능 특성일때 플레이어가 통과하지 못하도록 막음.
+        if (TINF.isBlock){
+            phi.moveY(obj,wallCheckDistance)
+            if (phi.isEncounterObj(obj,playerObj)){
+                state.moveU = 0
+            }
+            phi.moveY(obj,-wallCheckDistance)
+
+            phi.moveY(obj,-wallCheckDistance)
+            if (phi.isEncounterObj(obj,playerObj)){
+                state.moveD = 0
+            }
+            phi.moveY(obj,wallCheckDistance)
+
+            phi.moveX(obj,-wallCheckDistance)
+            if (phi.isEncounterObj(obj,playerObj)){
+                state.moveR = 0
+            }
+            phi.moveX(obj,wallCheckDistance)
+        
+            phi.moveX(obj,wallCheckDistance)
+            if (phi.isEncounterObj(obj,playerObj)){
+                state.moveL = 0
+            }
+            phi.moveX(obj,-wallCheckDistance)
+        }
+        // #region 타일물리엔진
+        // //console .log(state.moveX)
+        phi.moveX(obj,state.moveLc); // 실제 이동량 적용
+        phi.moveY(obj,-state.moveDc); // 실제 이동량 적용
+        phi.moveY(obj,state.moveUc); // 실제 이동량 적용
+        phi.moveX(obj,-state.moveRc); // 실제 이동량 적용
+
+        // 타일이 화면 끝에 있을때 반대쪽화면으로 이동 하는 코드
+        if (obj.x > (state.horTileCount*state.tileSize ) + state.adjX){
+            phi.moveX(obj,-state.horTileCount*state.tileSize )
+            TINF.horNum -= state.horTileCount
+            state.tileRelaod(TINF)
+            
+        } else if (obj.x < state.adjX){
+            phi.moveX(obj,state.horTileCount*state.tileSize )
+            TINF.horNum += state.horTileCount
+            state.tileRelaod(TINF)
+
+        } else if (obj.y > state.verTileCount*state.tileSize  + state.adjY){
+            phi.moveY(obj,-state.verTileCount*state.tileSize )
+            TINF.verNum -= state.verTileCount
+            state.tileRelaod(TINF)
+        } else if (obj.y < state.adjY){ 
+            phi.moveY(obj,state.verTileCount*state.tileSize )
+            TINF.verNum += state.verTileCount
+            state.tileRelaod(TINF) 
+        }  
+
+        
+        TINF.innerChunkId = state.mod(TINF.verNum,state.chunkSize) * state.chunkSize + state.mod(TINF.horNum, state.chunkSize) // 타일이 속한 청크내에서의 ID
+        TINF.chunkId = [Math.floor(TINF.horNum / state.chunkSize),Math.floor(TINF.verNum / state.chunkSize)] // 타일이 속한 청크의 ID
+        TINF.id = [TINF.chunkId[0],TINF.chunkId[1],TINF.innerChunkId] // 타일의 ID. 리스트 형대로 저장되고 [<청크내애서의_아이디1>,<청크내애서의_아이디2>,<청크>]
+        // #endregion
+        
+        // let isChangeBlock = [false,false]
+        if (String(TINF.chunkId) in MAP_DATA){ // 청크데이터가 있는지 확인
+            if (!state.renderLimitUse || state.renderLimitDistant > phi.distanceGetObj(obj,phi.obj(null,[phi.width/2/phi.screenRatio,phi.height/2/phi.screenRatio],[0,0]))){
+                phi.blit(obj);
+                // phi.text(`${TINF.isBlock}`,[obj.x+(obj.width/2) - 40,obj.y+(obj.height/2)],`${20*phi.screenRatio}px`,null,'center');
+            }
+            if (phi.isEncounterPos(obj,phi.mousepos)){
+                renderTileSlecter([obj.x,obj.y])
+                if (state.click_r){
+                    if (window.inventory[state.inventory_select] != null && selectTile == 0 && phi.distanceGetObj(playerObj,obj) > state.tileSize ){
+                        if (window.inventory[state.inventory_select] == 'plank_block'){
+                            wing.send("playerItemRemove",{
+                                'itemType':inventory[state.inventory_select],
+                                'invenIndex':state.inventory_select,
+                            })
+                            wing.send("tileEdit",{
+                                'mode':'build',
+                                'id':TINF.id,
+                                'pos':[state.moveX,state.moveY],
+                                'tile':changedTile,
+                            })
+                        }
+                    }
+                }
+
+                if (state.press_l && action == 'destroy'){
+                    if (!destroy_flag){
+                        destroyTimeStart = Date.now() + 2000
+                        destroy_flag = true
+                    }
+                }
+                
+                if (destroyTimeStart < Date.now() && destroy_flag){
+                    
+                    window.particle('sculpture_1',[
+                        obj.x + state.moveX - state.cameraAdjX + obj.width/2,
+                        obj.y + state.moveY - state.cameraAdjY + obj.height/2
+                    ],12,90)
+
+                    wing.send("tileEdit",{
+                        'mode':'destroy',
+                        'id':TINF.id,
+                        'pos':[obj.x + state.moveX - state.cameraAdjX + obj.width/2,
+                            obj.y + state.moveY - state.cameraAdjY + obj.height/2],
+                        'tile':0,
+                    })
+                    
+                    TINF.TILE = 0
+                    TINF.isBlock = false
+                    // isChangeBlock  = [true,false]
+                    destroy_flag = false
+                    
+                }
+                if (!state.press_l || state.isMove){
+                    destroy_flag = false
+                }
+            }
     
-}
+            const TILE_DATA = MAP_DATA[String(TINF.chunkId)][TINF.innerChunkId]; // 진짜 맵데이터
+            const _TILE = state.MAP_DATA_TRANSLATOR[TILE_DATA.tile];
+            
+            if (_TILE != null){
+                if (TINF.TILE == TILE_DATA.tile){
+                    phi.goto(TINF.TILEOBJ,[obj.x,obj.y]);
+                } else {
+                    TINF.TILE = TILE_DATA.tile;
+                    TINF.TILEOBJ = phi.obj(IMG.TILE[_TILE],[obj.x,obj.y],null);
+                    phi.reSizeBy(TINF.TILEOBJ,state.tileRatio)
+                }
+
+
+                phi.move(TINF.TILEOBJ,[
+                    -(TINF.TILEOBJ.width-state.tileSize )/2,
+                    -TINF.TILEOBJ.height + state.tileSize *0.9,
+                ])
+                
+                if (!state.renderLimitUse || state.renderLimitUse && state.renderLimitDistant > phi.distanceGetObj(TINF.TILEOBJ,phi.obj(null,[phi.width/2/phi.screenRatio,phi.height/2/phi.screenRatio],[0,0]))){
+                    if (_TILE != null){
+                        state.sortRender(TINF.TILEOBJ);
+                    }
+                } 
+                TINF.isBlock = wallTile.includes(TINF.TILE) ? true : false;
+            }
+            
+            // 현재 포커스중인 타일의 종류저장
+            if (phi.isEncounterPos(obj,phi.mousepos)) {
+                selectTile = TINF.TILE
+            }
+
+        } else {
+            wing.send("noChunkData",String(TINF.chunkId))
+            reqeustChunkId.push(String(TINF.chunkId)) // 중복요청 방지
+        }
+    }
