@@ -1,6 +1,8 @@
 import { random } from "./random.js";
 import { core } from "./core.js"
 import { eventManger } from './eventManger.js'
+import { cameraManager } from './cameraManager.js'
+import { imageObject } from './imageObject.js'
 
 function defualtVertexCalc(img,pos,size){
     const w = size ? size[0] : img.width;
@@ -48,6 +50,8 @@ class object {
         this.scaledVertex = null
         this.zIndex = 0
 
+        this.cameraApply = false
+
     }
 
     init(app){
@@ -92,6 +96,10 @@ class object {
             this.vertex[ i + 1 ] += addY
         }
         this._synchronization_pos()
+    }
+
+    goCenter(pos){
+        this.goto([(pos[0] - this.width)/2,(pos[1] - this.height)/2])
     }
 
 
@@ -227,6 +235,7 @@ class object {
         }
         return false
     }
+
     isEncounterPos2(pos){
         if (((this.renderX <= pos[0])  && (pos[0] <= this.renderX + this.renderW)) && ((this.renderY <= pos[1]) && (pos[1] <= this.renderY + this.renderH))) {          
             return true  
@@ -234,14 +243,12 @@ class object {
         return false
     }
 
-
     isSelect(){
-        if (this.isEncounterPos2(eventManger.mousepos) && eventManger.click_l){
+        if (this.isEncounterPos2(this.EventManger.mousepos) && this.EventManger.click_l){
             return true
         }
         return false
     }
-
 
     _updateInit(){
         this.isRender = false
@@ -276,12 +283,12 @@ export class gametManager {
         <canvas id="${this.id}"></canvas>
         `)
         
-        const canvas_ = document.getElementById(this.id)
-        canvas_.width = innerWidth
-        canvas_.height = innerHeight
-        canvas_.style.margin = 0
-        canvas_.style.padding = 0
-        canvas_.style.cssText = `
+        this.canvas = document.getElementById(this.id)
+        this.canvas.width = innerWidth
+        this.canvas.height = innerHeight
+        this.canvas.style.margin = 0
+        this.canvas.style.padding = 0
+        this.canvas.style.cssText = `
             display: block;
             position: absolute;
             top: 50%;
@@ -290,7 +297,6 @@ export class gametManager {
             width: 100vw;
             height: 100vh;
         `;
-        this.canvas = canvas_;
         this.app = new core(this.canvas);
         this.textCanvas = null;
         this.ctx = null;
@@ -302,7 +308,7 @@ export class gametManager {
         this.updatefunc = function(){};
         this.endLoopfunc = function(){};
             
-        this.screenRatio = (1920 / this.width);
+        this.screenRatio = (this.width / 1920);
         this.sceneFunc = {}
         this.nowScene = ''
         this.sceneChangeDetect = false
@@ -316,12 +322,28 @@ export class gametManager {
         this.resizeDisplay()
         window.renderZindex = []
 
+        this.EventManger = new eventManger(this)
+        this.camera = new cameraManager(this)
         
         window.addEventListener('resize',()=>{
             this.resizeDisplay()
         })
         this._update()
     }
+
+
+
+    getDownKey(key){
+        return this.EventManger.down_key[key]
+    }
+
+
+    getPressKey(key){
+        return this.EventManger.press_key[key]
+    }
+
+
+
 
     resizeDisplay(){
         this.app.resizeCanvas()
@@ -335,16 +357,13 @@ export class gametManager {
         }
     }
 
+
+
     async init(size){
         this.sysImg = await this.imgLoad('applePhi/src/img/sysImg.png')
-        this.canvas.width = size[0];
-        this.canvas.height = size[1];
-        this.width = size[0];
-        this.height = size[1];
-        this.resizeDisplay();
     }
 
-    endLoop(func){
+    last(func){
         this.endLoopfunc = func;
     }
 
@@ -374,10 +393,9 @@ export class gametManager {
                     this._render(obj)
                 }
             }
-        // this.studio.test()
 
             this.sceneChangeDetect = false
-            eventManger.resetState()
+            this.EventManger.resetState()
             requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);
@@ -456,6 +474,7 @@ export class gametManager {
 
     _render(obj){
         if (!obj.isRender) return
+
         this.app.drawImage(
             obj.img,
             obj.renderX,
@@ -504,181 +523,79 @@ export class gametManager {
     text(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left') {
         this.app.text(text,pos,size,color,font,align)
     }
-
-    test(){
-        this.canvas.toBlob((blob) => {
-        if (!blob) return;
-
-        // 2. Blob 데이터를 가리키는 임시 메모리 URL 생성
-        const blobUrl = URL.createObjectURL(blob);
-
-        // 3. 다운로드 실행
-        const link = document.createElement('a');
-        link.download = 'image.png';
-        link.href = blobUrl;
-        link.click();
-
-        // 4. 메모리 누수 방지를 위한 URL 해제
-        URL.revokeObjectURL(blobUrl);
-        }, 'image/png', 0.95); // (포맷, 품질: 0.0~1.0)
-    }
-
-    
-    
-
 }
 
-class imageObject {
-    constructor(app){
-        this.app = app
-        this.img = null
-        this.width = null
-        this.height = null
-        this.size = [this.width,this.height]
-    }
-    _synchronization_size(){
-        this.width = this.img.width
-        this.height = this.img.height
-    }
-    async load(path){
-        this.img = await this.app.loadImage(path);
-        this._synchronization_size()
-    }
-
-    resize(size){
-        this.img.width = size[0]
-        this.img.height = size[1]
-        this._synchronization_size()
-    }
-}
-
-
-export class tileManager{
+export class movementExtend{
     constructor(studio){
         this.studio = studio
-        this.tile = []
-        
-        this.tileSize_Default = 160
-        this.tileSize = 120
-        this.tileRatio = this.tileSize / this.tileSize_Default
-        // this.chunkSize = 6;
 
-        this.adjX = -this.tileSize *1.5;
-        this.adjY = -this.tileSize *1.5;
-        
-        this.speed = 10
 
-        this.cameraX=0
-        this.cameraY=0
-        this.cameraRun = 1 
-        this.cameraAdjX = 0
-        this.cameraAdjY = 0
-        this.cameraShakeX = 0
-        this.cameraShakeY = 0
+        this.left = 0
+        this.right = 0
+        this.up = 0
+        this.down = 0
 
-        this.upKey=false
-        this.leftKey=false
-        this.downKey=false
-        this.rightKey=false
-        this.isMove=false
+        this.speed = 15
+        this.smooth = 0.8
 
-        this.moveR=0
-        this.moveL=0
-        this.moveU=0
-        this.moveD=0
-        this.moveX=0
-        this.moveY=0
-        this.moveRc=0
-        this.moveLc=0
-        this.moveUc=0
-        this.moveDc=0
-
-        this.horTileCount = 16
-        this.verTileCount = 9
-
+        this.mx = 0
+        this.mY = 0
     }
 
-    init(){
-        this.tile = [] 
-        // this.cameraAdjX = ((this.studio.width-this.tileSize+(1920*(1-this.studio.screenRatio))) / 2)
-        // this.cameraAdjY = ((this.studio.height-(this.tileSize*2)+(1080*(1-this.studio.screenRatio))) / 2)
-        this.cameraAdjX = 0;
-        this.cameraAdjY = 0;
-        for (let i=0; i<this.horTileCount; i++){
-            for (let j=0; j<this.verTileCount; j++){
-                const obj = this.studio.object(this.studio.sysImg,
-                    [(i*this.tileSize)+ this.cameraAdjX + this.cameraX,(j*this.tileSize) + this.cameraAdjY + this.cameraY],
-                    [this.tileSize,this.tileSize]
-                )
-
-                obj.fillColor = [random.random(0,150),random.random(0,90),200,255]
-                this.tile.push({
-                    renderObj: obj,
-                    hitbox: this.studio.object(this.studio.sysImg,obj.pos,obj.size),
-                    horNum: i,//가로줄 넘버
-                    verNum: j,//세로줄 넘버
-                });
-            }
+    setState(speed,smooth){
+        if (speed === null){
+            speed=this.speed
         }
-    } 
-
-
-    render(){
-        for (let tileObj of this.tile){
-            const renderObj = tileObj.renderObj
-            renderObj.render()
+        if (smooth === null){
+            smooth=this.smooth
         }
-    }
-    
-
-
-    _tileObjMove(tileObj,moveX=this.speed,moveY=this.speed){
-        tileObj.renderObj.move([moveX,moveY])
-        tileObj.hitbox.move([moveX,moveY])
+        this.speed = speed
+        this.smooth = smooth
     }
 
-    moveFree(){
-        for (let tileObj of this.tile){
-            const hitbox = tileObj.hitbox
-            const horNum = tileObj.horNum
-            const verNum = tileObj.verNum
 
-            this._tileObjMove(tileObj,5,5)
-
-            // console.log((this.horTileCount*this.tileSize) + this.adjX)
-
-
-            if (hitbox.x > (this.horTileCount*this.tileSize)){
-                this._tileObjMove(tileObj,-this.horTileCount*this.tileSize)
-                tileObj.horNum -= this.horTileCount
-                this.tileRelaod(tileObj)
-                
-            } else if (hitbox.x < this.adjX){
-                hitbox.moveX(this.horTileCount*this.tileSize )
-                tileObj.horNum += this.horTileCount
-                this.tileRelaod(tileObj)
-
-            } else if (hitbox.y > this.verTileCount*this.tileSize  + this.adjY){
-                hitbox.moveY(-this.verTileCount*this.tileSize )
-                tileObj.verNum -= this.verTileCount
-                this.tileRelaod(tileObj)
-            } else if (hitbox.y < this.adjY){ 
-                hitbox.moveY(this.verTileCount*this.tileSize )
-                tileObj.verNum += this.verTileCount
-                this.tileRelaod(tileObj) 
-            }  
+    move(reverse=false){ 
+        if (this.studio.getPressKey('KeyA')){
+            this.left =  this.speed
+        } else {
+            this.left = this.left * this.smooth
         }
+
+        if (this.studio.getPressKey('KeyD')){
+            this.right =  this.speed
+        } else {
+            this.right = this.right * this.smooth
+        }
+
+        if (this.studio.getPressKey('KeyW')){
+            this.up =  this.speed
+        } else {
+            this.up = this.up * this.smooth
+        }
+
+        if (this.studio.getPressKey('KeyS')){
+            this.down =  this.speed
+        } else {
+            this.down = this.down * this.smooth
+        }
+
+
+
+        this.mx  = -this.left + this.right
+        this.my  = this.down - this.up
+
+        if (reverse){
+            return [-this.mx,-this.my]
+
+        }
+        return [this.mx,this.my]
     }
 
-    switchOpposition(){
+    get(reverse=false){
+        if (reverse){
+            return [-this.mx,-this.my]
 
+        }
+        return [this.mx,this.my]
     }
-
-    tileRelaod(tile){// 게임내의 시스템에서 사용하는 타일특성 초기화 함수
-        // tile.isBlock = false
-    }; 
-    
-
-
-
 }
