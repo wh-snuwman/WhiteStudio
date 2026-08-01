@@ -94,11 +94,13 @@ export class tileManager{
     move(offset){
         for (let tileObj of this.tile){
             const hitbox = tileObj.hitbox
-            // const horNum = tileObj.horNum
-            // const verNum = tileObj.verNum
             tileObj.move(offset)
             this.switchOpposition(tileObj)
         }
+    }
+
+    cameraMove(camera){
+        this.move(camera.offset)
     }
 
     switchOpposition(tileObj){

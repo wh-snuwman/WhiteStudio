@@ -11,6 +11,10 @@ export class cameraManager{
         this.shakeX = 0
         this.shakeY = 0
 
+        this.tracking_x = 0
+        this.tracking_y = 0
+        this.tracking_smooth = 10
+        this.tracking_adj = [10,10]
     }
 
     // smoothMove(offset){
@@ -36,7 +40,23 @@ export class cameraManager{
         this.move([pos[0]-this.x,pos[1]-this.y])
     }
 
+    trackingSet(smooth,adj){
+        this.tracking_smooth = smooth
+        this.tracking_adj = adj
+    }
 
+    tracking(obj){
+        const pos = obj.pos
+        const size = obj.size
+        const target_x = this.x - pos[0] + (this.studio.defaultDisplaySize[0] - size[0])/2 + this.tracking_adj[0]
+        const target_y = this.y - pos[1] + (this.studio.defaultDisplaySize[1] - size[1])/2 + this.tracking_adj[1]
+
+
+        this.move([
+            (target_x - this.x) / this.tracking_smooth,
+            (target_y - this.y) / this.tracking_smooth
+        ])
+    }   
 
 }
 

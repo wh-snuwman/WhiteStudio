@@ -1,7 +1,7 @@
-import { gametManager } from "../../applePhi/src/script/gameManger.js"
-import { movementExtend } from "../../applePhi/src/script/gameManger.js"
-import { tileManager } from "../../applePhi/src/script/tileManager.js"
-import { random } from "../../applePhi/src/script/random.js"
+import { gametManager } from "../../WhiteStudio/src/script/gameManger.js"
+import { movementExtension } from "../../WhiteStudio/src/script/movementExtension.js"
+import { tileManager } from "../../WhiteStudio/src/script/tileManager.js"
+import { random } from "../../WhiteStudio/src/script/random.js"
 
 
 (async () => {
@@ -9,17 +9,17 @@ import { random } from "../../applePhi/src/script/random.js"
 const studio = new gametManager();
 const tile = new tileManager(studio,120);
     
-await studio.init([innerWidth, innerHeight]);
+await studio.init([1920,1080]);
 
 
 tile.init()
 
-const cameraMovement = new movementExtend(studio)
-const playerMovement = new movementExtend(studio)
+const cameraMovement = new movementExtension(studio)
+const playerMovement = new movementExtension(studio)
 
 
 const test = studio.object(studio.sysImg,[0,0],[tile.tileSize,tile.tileSize*2])
-test.goCenter([1920,1080])
+
 
 studio.update(() => {
     studio.fill([90, 90, 100]);
@@ -28,11 +28,21 @@ studio.update(() => {
     
     test.move(playerMovement.move())
     
-    studio.camera.move(cameraMovement.move(true))
     
+    studio.camera.tracking(test)
+    studio.camera.trackingSet(10,[
+        -(studio.EventManger.mousepos[0] - 1920/2)/5,
+        -(studio.EventManger.mousepos[1] - 1080/2)/5
+    ])
+
     
-    test.move(studio.camera.offset)
-    tile.move(studio.camera.offset)    
+    test.cameraMove(studio.camera)
+    tile.cameraMove(studio.camera)    
+
+
+
+    // test.zIndex = test.y
+    
     tile.render()
     test.render()
 
@@ -43,5 +53,6 @@ studio.update(() => {
 
 window.addEventListener('resize',()=>{
     tile.init()
+    test.zIndex = test.y
 })
 })();
