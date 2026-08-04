@@ -67,9 +67,31 @@ export class core {
         this.texcoordBuffer = gl.createBuffer();
         this.dpr = 1;
         this.images = [];
-        this.textCanvas = document.createElement('canvas');
-        this.ctx = this.textCanvas.getContext('2d');
+
+        this.atlasSize = 1024; // 아틀라스 캔버스 해상도
+        this.atlasCanvas = document.createElement('canvas');
+        this.atlasCanvas.width = this.atlasSize;
+        this.atlasCanvas.height = this.atlasSize;
+        this.ctx = this.atlasCanvas.getContext('2d', { willReadFrequently: true });
+
+        this.atlasTexture = gl.createTexture();
+        this.initAtlasTexture();
+
+        // drawImage 내부에서 사용할 아틀라스 텍스처 객체 래퍼
+        this.fontAtlasTexture = {
+            texture: this.atlasTexture,
+            isVideo: false,
+            width: this.atlasSize,
+            height: this.atlasSize
+        };
+
+        // 글자별 UV 위치 데이터 및 포인터 관리
+        this.glyphCache = new Map(); // key: `${char}_${fontStr}`
+        this.atlasCursorX = 0;
+        this.atlasCursorY = 0;
+        this.maxRowHeight = 0;
     }
+
 
     _compileShader(type, source) {
         const gl = this.gl;
@@ -112,7 +134,7 @@ export class core {
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                    const imageObj = { texture, width: img.width, height: img.height };
+                    const imageObj = { texture, isVideo: false, width: img.width, height: img.height };
                     this.images.push(imageObj);
                     resolve(imageObj);
                 } catch (e) {
@@ -123,13 +145,27 @@ export class core {
         });
     }
 
-    drawImage(image, x, y, w, h, vertex_=null, texcoord_=null, fillColor_=null, alpha_=1.0) {
+    drawImage(image, x, y, w, h, vertex_ = null, texcoord_ = null, fillColor_ = null, alpha_ = 1.0) {
         const gl = this.gl;
         
-        if (image.isVideo && image.video.readyState >= image.video.HAVE_CURRENT_DATA) {
+        // 1. 객체/배열 형태의 오버로딩 파라미터 방어적 처리
+        if (Array.isArray(x)) {
+            alpha_ = fillColor_ ?? 1.0;
+            fillColor_ = texcoord_;
+            texcoord_ = w;
+            w = y[0];
+            h = y[1];
+            y = x[1];
+            x = x[0];
+        }
+
+        // Raw WebGLTexture가 직접 들어온 경우 래핑
+        const imgObj = (image && image.texture) ? image : { texture: image, isVideo: false };
+
+        if (imgObj.isVideo && imgObj.video && imgObj.video.readyState >= imgObj.video.HAVE_CURRENT_DATA) {
             gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-            gl.bindTexture(gl.TEXTURE_2D, image.texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image.video);
+            gl.bindTexture(gl.TEXTURE_2D, imgObj.texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imgObj.video);
         }
 
         let targetAlpha = alpha_;
@@ -138,7 +174,7 @@ export class core {
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        if (vertex_ == null){
+        if (vertex_ == null) {
             const x1 = x;
             const y1 = y;
             const x2 = x + w;
@@ -152,11 +188,18 @@ export class core {
         gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
         
         gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
-        if (texcoord_ == null){
-            const u1 = 0.0;
-            const v1 = 0.0;
-            const u2 = 1.0;
-            const v2 = 1.0;
+        if (texcoord_ == null) {
+            texcoord_ = [
+                0.0, 0.0,
+                1.0, 0.0,
+                0.0, 1.0,
+                0.0, 1.0,
+                1.0, 0.0,
+                1.0, 1.0
+            ];
+        } else if (texcoord_.length === 4) {
+            // [u1, v1, u2, v2] 형태의 UV 영역 배열 대응
+            const [u1, v1, u2, v2] = texcoord_;
             texcoord_ = [
                 u1, v1,
                 u2, v1,
@@ -174,7 +217,7 @@ export class core {
 
         gl.uniform2f(this.resolutionLocation, gl.canvas.width, gl.canvas.height);
 
-        // fillColor_ 배열 요소가 0~255 범위인 경우 0.0~1.0 범위로 정규화 처리
+        // fillColor_ 배열 요소 정규화 처리
         if (fillColor_ != null) {
             let r = fillColor_[0];
             let g = fillColor_[1];
@@ -196,7 +239,7 @@ export class core {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         
-        gl.bindTexture(gl.TEXTURE_2D, image.texture);
+        gl.bindTexture(gl.TEXTURE_2D, imgObj.texture);
         gl.drawArrays(gl.TRIANGLES, 0, (vertex_.length / 2));
     }
 
@@ -219,42 +262,176 @@ export class core {
         return false;
     }
 
-    text(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left') {
-        if (!this.ctx) return;
-        const fontStr = (typeof font === 'string') ? `${size} ${font}` : `${size} serif`;
-        this.ctx.font = fontStr;
-        const metrics = this.ctx.measureText(text);
-        const textWidth = Math.ceil(metrics.width);
-        const textHeight = Math.ceil(parseInt(size) * 1.4);
-
-        if (textWidth === 0 || textHeight === 0) return;
-
-        this.textCanvas.width = textWidth;
-        this.textCanvas.height = textHeight;
-
-        this.ctx.font = fontStr;
-        this.ctx.fillStyle = color;
-        this.ctx.textBaseline = 'middle';
-        
-        let textX = 0;
-        if (align === 'center') textX = textWidth / 2;
-        else if (align === 'right') textX = textWidth;
-        this.ctx.textAlign = align;
-
-        this.ctx.clearRect(0, 0, textWidth, textHeight);
-        this.ctx.fillText(text, textX, textHeight / 2);
-
+   initAtlasTexture() {
         const gl = this.gl;
-        const texture = gl.createTexture();
-        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.textCanvas);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture);
+        // 빈 1024x1024 텍스처 할당
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.atlasSize, this.atlasSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        
+        // 안티앨리어싱을 위해 LINEAR 필터 사용
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        
-        this.drawImage({ texture }, pos[0], pos[1], textWidth, textHeight);
-        gl.deleteTexture(texture);
+    }
+
+    _cacheGlyph(char, fontStr, sizeNum) {
+        const key = `${char}_${fontStr}`;
+        if (this.glyphCache.has(key)) {
+            return this.glyphCache.get(key);
+        }
+
+        this.ctx.font = fontStr;
+        this.ctx.fillStyle = 'white';
+        this.ctx.textBaseline = 'top';
+
+        const metrics = this.ctx.measureText(char);
+        const w = Math.max(1, Math.ceil(metrics.width));
+        const h = Math.ceil(sizeNum * 1.4); // 폰트 높이 여유 확보
+
+        // 줄바꿈 검사
+        if (this.atlasCursorX + w > this.atlasSize) {
+            this.atlasCursorX = 0;
+            this.atlasCursorY += this.maxRowHeight + 2;
+            this.maxRowHeight = 0;
+        }
+
+        // 아틀라스 크기(1024) 초과 방지
+        if (this.atlasCursorY + h > this.atlasSize) {
+            console.warn("Font Atlas 공간 부족");
+            return null;
+        }
+
+        // 2D 캔버스 해당 영역 지우고 글자 그리기
+        this.ctx.clearRect(this.atlasCursorX, this.atlasCursorY, w, h);
+        this.ctx.fillText(char, this.atlasCursorX, this.atlasCursorY);
+
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+
+        // [중요 수정] CanvasElement 인자 형태일 때는 xoffset, yoffset만 지정해야 오버플로우가 안 납니다!
+        gl.texSubImage2D(
+            gl.TEXTURE_2D,
+            0,
+            0, 0, // xoffset, yoffset (캔버스 전체 1024x1024 업로드)
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            this.atlasCanvas
+        );
+
+        const glyphInfo = {
+            width: w,
+            height: h,
+            u1: this.atlasCursorX / this.atlasSize,
+            v1: this.atlasCursorY / this.atlasSize,
+            u2: (this.atlasCursorX + w) / this.atlasSize,
+            v2: (this.atlasCursorY + h) / this.atlasSize
+        };
+
+        this.glyphCache.set(key, glyphInfo);
+
+        this.atlasCursorX += w + 2;
+        this.maxRowHeight = Math.max(this.maxRowHeight, h);
+
+        return glyphInfo;
+    }
+
+    text(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left') {
+        if (!text) return;
+
+        const sizeNum = Math.round(convertToPx(size));
+        const fontName = (typeof font === 'string') ? font : 'serif';
+        const fontStr = `${sizeNum}px ${fontName}`;
+
+        let totalWidth = 0;
+        const glyphsToDraw = [];
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const glyph = this._cacheGlyph(char, fontStr, sizeNum);
+            if (glyph) {
+                glyphsToDraw.push(glyph);
+                totalWidth += glyph.width;
+            }
+        }
+
+        let startX = pos[0];
+        if (align === 'center') {
+            startX -= totalWidth / 2;
+        } else if (align === 'right') {
+            startX -= totalWidth;
+        }
+
+        const colorRGB = this._parseColor(color);
+
+        let currentX = startX;
+        const currentY = pos[1];
+
+        for (let i = 0; i < glyphsToDraw.length; i++) {
+            const glyph = glyphsToDraw[i];
+
+            this.drawImage(
+                this.fontAtlasTexture,
+                currentX,
+                currentY,
+                glyph.width,
+                glyph.height,
+                null,
+                [glyph.u1, glyph.v1, glyph.u2, glyph.v2],
+                colorRGB
+            );
+
+            currentX += glyph.width;
+        }
+    }
+
+    _parseColor(colorStr) {
+        if (Array.isArray(colorStr)) {
+            return colorStr;
+        }
+
+        if (!this._colorCtx) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            this._colorCtx = canvas.getContext('2d', { willReadFrequently: true });
+        }
+
+        this._colorCtx.fillStyle = colorStr;
+        this._colorCtx.fillRect(0, 0, 1, 1);
+        const [r, g, b, a] = this._colorCtx.getImageData(0, 0, 1, 1).data;
+
+        return [r / 255, g / 255, b / 255, a / 255];
+    }
+}
+
+function convertToPx(sizeStr, baseFontSize = 16) {
+    const match = String(sizeStr).match(/^([0-9.]+)\s*([a-z%]*)$/i);
+    if (!match) return 20;
+
+    const value = parseFloat(match[1]);
+    const unit = (match[2] || 'px').toLowerCase();
+
+    switch (unit) {
+        case 'rem':
+            const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            return value * rootFontSize;
+            
+        case 'em':
+            return value * baseFontSize;
+            
+        case 'pt':
+            return value * 1.333;
+            
+        case 'vh':
+            return (value * window.innerHeight) / 100;
+            
+        case 'vw':
+            return (value * window.innerWidth) / 100;
+            
+        case 'px':
+        default:
+            return value;
     }
 }

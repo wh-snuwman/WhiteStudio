@@ -1,5 +1,6 @@
 export class random {
 
+
     static random(num1,num2){
         if (num1 > num2) {
             console.error('랜덤오류. 최솟값이 최댓값보다 클수 없습니다')
@@ -25,5 +26,14 @@ export class random {
         const r = arr[i]
         delete arr[i] 
         return r
+    }
+
+
+    static simpleId(){
+        let id = ''
+        for (let i=0; i<24;i++){
+            id = id + this.choice([...'1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM'])
+        }
+        return id
     }
 }

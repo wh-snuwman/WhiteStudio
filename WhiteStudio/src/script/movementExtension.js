@@ -43,8 +43,8 @@ export class movementExtension{
             this.up =  this.speed
         } else {
             this.up = this.up * this.smooth
+            
         }
-
         if (this.studio.getPressKey('KeyS')){
             this.down =  this.speed
         } else {
@@ -67,5 +67,13 @@ export class movementExtension{
         }
         return [this.mx,this.my]
     }
-
+    Direction(){
+        const centerX = obj.x + state.moveX + (obj.width / 2) - state.cameraAdjX ;
+        const centerY = obj.y + state.moveY + (obj.height / 2) - state.cameraAdjY;
+        const mouseWorldX = (phi.mousepos[0]) + state.moveX - state.cameraAdjX;
+        const mouseWorldY = (phi.mousepos[1]) + state.moveY - state.cameraAdjY;
+        const dx =  centerX - mouseWorldX;
+        const dy = centerY - mouseWorldY;
+        const rad = (-1* Math.atan2(dy, dx))
+    }
 }
