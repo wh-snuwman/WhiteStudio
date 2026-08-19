@@ -1,35 +1,30 @@
-import { object } from '../object.js';
-import {LogSet} from './Log.js'
+import {log} from '../Log.js'
 
 export class wingAPI {
     constructor() {
-        this.log = new LogSet()
         this.url = '';
-        // this.recvFn  = () =>{};
-
         this.recvFn = {}
-
         this.errorFn = () =>{};
         this.closeFn = () =>{};
         this.startFn = () =>{};
-
         this.loginFn = () =>{};
         this.signupFn = () =>{};
-
         this.isManualClose = false;
         this.isOpen = false;
         this.openPromise = null;
         this.useLog = false;
         this.nickname = null;
+        this.password = null;
         this.isLogin = false;
-        // this.nickname = ''
+
+        this.sessionId = '';
     }
 
     async connect(addr){
         this.url = addr;
         
         if (this.isOpen || this.openPromise !== null){
-            this.log.Warn('이미 서버에 연결 되었습니다! '+ this.url)
+            log.Warn('이미 서버에 연결 되었습니다! '+ this.url)
             return;
         }
 
@@ -46,7 +41,7 @@ export class wingAPI {
 
     disconnect(){
         if (this.websc && this.websc.readyState == WebSocket.OPEN){
-            this.log.Info('접속종료 요첨됨..')
+            log.Info('접속종료 요첨됨..')
             this.isManualClose = true;
             this.websc.close()
             
@@ -54,7 +49,7 @@ export class wingAPI {
     }
     
     _openInit(e){
-        this.log.Info(`서버에 연결됨: ${this.url}`)
+        log.Info(`서버에 연결됨: ${this.url}`)
         this.isOpen = true
     }
 
@@ -65,9 +60,9 @@ export class wingAPI {
     _closeSet(){
         this.isOpen = false
         if (this.isManualClose){
-            this.log.Info('연결종료')
+            log.Info('연결종료')
         } else {
-            this.log.Error('비정상적으로 연결종료')
+            log.Error('비정상적으로 연결종료')
         }
 
     }
@@ -112,35 +107,36 @@ export class wingAPI {
                 
                 if (CODE_SYS == 'signup'){
                     if (DATA.signup){
-                        this.log.Info("가입완료. 로그인 가능")
+                        log.Info("가입완료. 로그인 가능")
                         this.signupFn()
                     } else {
-                        this.log.Info("가입실패. 비밀번호가 너무 짧거나(4글자 미만) 중복닉네임 입니다.")
+                        log.Info("가입실패. 비밀번호가 너무 짧거나(4글자 미만) 중복닉네임 입니다.")
                     }
                     
                 } else if (CODE_SYS == 'login'){
                     if (DATA.login){
-                        this.log.Info("로그인완료:" + DATA.nickname)
+                        log.Info("로그인완료:" + DATA.nickname)
                         this.nickname = DATA.nickname
+                        this.sessionId = DATA.sessionId
                         this.isLogin = true
                         this.loginFn()
                     } else {
-                        this.log.Info("로그인 실패. 계정이 없거나 비밀번호가 틀려렸습니다.")
+                        log.Info("로그인 실패. 계정이 없거나 비밀번호가 틀려렸습니다.")
                     }
 
                 } else if (CODE_SYS == 'Jgroup'){
                     if (DATA.state == 'success'){
-                        this.log.Info(`그룹참가 완료 ${DATA.name}`)
+                        log.Info(`그룹참가 완료 ${DATA.name}`)
                     } else {
-                        this.log.Info("그룹참가 실패")
+                        log.Info("그룹참가 실패")
                     }
                 } else if (CODE_SYS == 'Lgroup'){
                     // console.log(DATA)
                     // console.log('asd')
                     if (DATA.state == 'success'){
-                        this.log.Info(`그룹탈퇴 완료`)
+                        log.Info(`그룹탈퇴 완료`)
                     } else {
-                        this.log.Info("그룹탈퇴 실패")
+                        log.Info("그룹탈퇴 실패")
                     }
                 }
                 
@@ -149,7 +145,7 @@ export class wingAPI {
             if (Object.keys(this.recvFn).includes(CODE)){
                 this.recvFn[CODE](DATA)
             } else {
-                this.log.Warn(`recv function is not found : ${CODE}`)
+                log.Warn(`recv function is not found : ${CODE}`)
             }
 
         }
@@ -178,21 +174,21 @@ export class wingAPI {
 
     joinGroup(group){
         if (this.isLogin){  
-            this.send("wing:Jgroup",{'name':group})
+            this.send("wing:Jgroup",{'group':group,'nickname':this.nickname,'sessionId':this.sessionId})
             
             return true
         } else {
-            this.log.Info('로그인후 사용가능')
+            log.Info('로그인후 사용가능')
             return false
         } 
     } 
 
     leftGroup(group){
         if (this.isLogin){  
-            this.send("wing:Lgroup",{})
+            this.send("wing:Lgroup",{'nickname':this.nickname,'sessionId':this.sessionId})
             return true
         } else {
-            this.log.Info('로그인후 사용가능')
+            log.Info('로그인후 사용가능')
             return false
         } 
     } 

@@ -16,8 +16,16 @@ export class imageObject {
     }
 
     resize(size){
+        // console.log(this.img.width)
         this.img.width = size[0]
         this.img.height = size[1]
+        this._synchronization_size()
+    }
+
+    resizeBy(ratio){
+        // console.log(this.img.width)
+        this.img.width *= ratio
+        this.img.height *= ratio
         this._synchronization_size()
     }
 }

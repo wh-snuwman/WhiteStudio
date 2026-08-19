@@ -14,10 +14,10 @@ function defualtVertexCalc(img,pos,size){
 }
 
 
-
-
 export class object {
     constructor(imgObj, pos, size = null, vertex = null, texcoord = null){
+        this.img = null
+        this.imgObj = null
         if (imgObj){
             this.imgObj = imgObj
             this.img = imgObj.img
@@ -48,7 +48,7 @@ export class object {
         this.scaledVertex = null
         this.zIndex = 0
         this.zIndexAdj = 0
-
+        this.flip = [false,false]
         this.cameraApply = false
 
     }
@@ -56,7 +56,6 @@ export class object {
     ratioSet(ratio){
         this.screenRatio = ratio
     }
-
 
     _synchronization_pos(){
         this.pos = [this.x,this.y]
@@ -197,21 +196,6 @@ export class object {
     resizeBy(size,ratio,mark){
         this.resize([size[0]*ratio,size[1]*ratio],mark)
     }
-
-    flip(what='hor'){
-        if (what == 'hor'){
-            for(let i=0; i<this.texcoord.length; i+=2){
-                this.texcoord[i] = 1 - this.texcoord[i]
-            }
-        } else if (what == 'ver'){
-            for(let i=0; i<this.texcoord.length; i+=2){
-                othisbj.texcoord[i+1] = 1 - this.texcoord[i+1]
-            }
-        }
-        this._synchronization_pos()
-        this._synchronization_size()
-    }
-
     getDistanceObj(otherObj,mark="center"){
         if (mark == 'center') {
             return Math.sqrt(((this.x+(this.width/2)) - (otherObj.x+(otherObj.width/2)))**2 + ((this.y+(this.height/2)) - (otherObj.y+(otherObj.height/2)))**2)
@@ -260,7 +244,6 @@ export class object {
         this.scaledVertex = this.vertex ? this.vertex.map(v => v * this.screenRatio) : null;
     }
 
-
     render() {  
         if (!this.img) return;
         this.isRender = true
@@ -268,4 +251,104 @@ export class object {
         this._synchronization_size()
     }
     
+}
+
+
+
+export class videoObject{
+    constructor(app){
+        this.app = app
+        this.viedo = null
+        this.width = 0
+        this.w = 0
+        this.height = 0
+        this.h = 0
+        this.size = 0
+        this.x = 0
+        this.y = 0
+        this.pos = [0,0]
+        this.isRender = false
+        this.screenRatio = 1
+        this.zIndex = 1
+        this.zIndexAdj = 0
+
+        this.renderX = 0
+        this.renderY = 0
+        this.renderW = 0
+        this.renderH = 0
+        this.texcoord = null
+        this.scaledVertex = null
+
+        this.fillColor = null
+        this.alpha = 255
+        this.flip = [false,false]
+
+    }
+
+    ratioSet(ratio){
+        this.screenRatio = ratio
+    }
+    
+    _synchronization_pos(){
+        this.pos = [this.x,this.y]
+    }
+    _synchronization_size(){
+        this.size = [this.width,this.height]
+        this.w = this.width
+        this.h = this.height
+    }
+
+    _updateInit(){
+        this.isRender = false
+    }
+
+
+    async load(path){
+        this.video = await this.app.loadVideo(path, {
+            loop: true,
+            muted: true,
+            autoPlay: false
+        });;
+
+        this.width = this.video.width
+        this.height = this.video.height
+        this._synchronization_size()
+    }
+
+
+
+    goto(pos){
+        this.x = pos[0]
+        this.y = pos[1]
+        this._synchronization_pos()
+    }
+
+    move(offset){
+        this.x += offset[0]
+        this.y += offset[1]
+        this._synchronization_pos()
+    }
+    
+    resize(size){
+        this.width = size[0]
+        this.height = size[1]
+        this._synchronization_pos()
+    }
+
+
+    play(){
+        this.video.play()
+    }
+
+    render(){
+        this.isRender = true
+        this.renderX = this.x * this.screenRatio
+        this.renderY = this.y * this.screenRatio
+        this.renderW = this.width * this.screenRatio
+        this.renderH = this.height * this.screenRatio
+    }
+
+    
+
+
 }

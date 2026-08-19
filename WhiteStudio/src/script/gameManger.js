@@ -3,6 +3,7 @@ import { core } from "./core.js"
 import { eventManger } from './eventManger.js'
 import { cameraManager } from './cameraManager.js'
 import { imageObject } from './imageObject.js'
+import { videoObject } from './object.js'
 import { textObject } from './textManager.js'
 import { object } from './object.js'
 
@@ -87,7 +88,15 @@ export class gametManager {
     }
 
 
-
+    getMouse(){
+        return {
+            click_l:this.EventManger.click_l,
+            click_r:this.EventManger.click_r,
+            press_r:this.EventManger.press_r,
+            press_l:this.EventManger.press_l,
+            mousepos:this.EventManger.mousepos,
+        }
+    }
 
     resizeDisplay(){
         this.app.resizeCanvas()
@@ -148,7 +157,10 @@ export class gametManager {
                 else if (obj instanceof textObject){
                     this._renderTextObj(obj)
     
-                } 
+                }
+                else if (obj instanceof videoObject){
+                    this._renderVideoObj(obj)
+                }
                 else {
                     console.error('error')
                 }
@@ -218,6 +230,15 @@ export class gametManager {
         await imgObj.load(path)
         return imgObj
     }
+    
+
+    async videoLoad(path){
+        const videoObj = new videoObject(this.app)
+        await videoObj.load(path)
+        videoObj.ratioSet(this.screenRatio)
+        this.objectList.push(videoObj)
+        return videoObj
+    }
 
     sceneChange(scene){
         this.nowScene = scene;
@@ -233,6 +254,10 @@ export class gametManager {
 
 
     _renderTextObj(tobj){
+        if (!tobj.isRender) return
+
+        // console.log(tobj.renderX,tobj.renderY)
+        
         this.app.text(
             tobj.text,
             [tobj.renderX,tobj.renderY],
@@ -243,12 +268,13 @@ export class gametManager {
         )
     }
 
-
     _renderObject(obj){
         if (!obj.isRender) return
 
+        const img = obj.imgObj ? obj.imgObj.img : null
+
         this.app.drawImage(
-            obj.img,
+            img,
             obj.renderX,
             obj.renderY,
             obj.renderW,
@@ -256,7 +282,25 @@ export class gametManager {
             obj.scaledVertex,
             obj.texcoord,
             obj.fillColor,
-            obj.alpha !== undefined ? obj.alpha : 255
+            obj.alpha !== undefined ? obj.alpha : 255,
+            obj.flip
+        )
+
+    }
+
+    _renderVideoObj(vobj){
+        if (!vobj.isRender) return
+        this.app.drawImage(
+            vobj.video,
+            vobj.renderX,
+            vobj.renderY,
+            vobj.renderW,
+            vobj.renderH,
+            vobj.scaledVertex,
+            vobj.texcoord,
+            vobj.fillColor,
+            vobj.alpha !== undefined ? vobj.alpha : 255,
+            vobj.flip
         )
     }
 
@@ -291,77 +335,4 @@ export class gametManager {
         document.fonts.add(font);
     }
 }
-
-
-export class entityExtension{
-    constructor(studio){
-        this.studio = studio
-        this.entities = {}
-    }
-
-    new(obj=null,hitbox=null,pos=null){
-        if (!obj) return
-
-        const _obj = obj
-        let _hitbox = this.studio.object(null,hitbox.pos,hitbox.size)
-
-        if (!hitbox){
-            _hitbox = this.studio.object(null,obj.pos,obj.size)   
-        }
-        let _pos = pos
-        if (!pos){
-            _pos = obj.pos
-        }
-
-        const ntt = new entity(_obj,_hitbox,pos)
-        return ntt
-    }
-
-}
-
-class entity{
-    constructor(obj,hitbox,pos){
-        this.hp = 100
-        this.inventory = []
-
-        this.hitbox = hitbox
-        this.renderObj = obj
-        this.renderObj.zIndex = 1000000
-        this.motionObj = null
-        this.summonTime = Date.now()
-    }
-
-
-    cameraMove(camera){
-        this.renderObj.move(camera.offset)
-        this.hitbox.move(camera.offset)
-    }
-
-    render(isRenderHitbox=false){
-        // console.log(this.renderObj)
-        this.renderObj.render()
-        if (isRenderHitbox) this.hitbox.render()
-    }
-
-    move(offset){
-        this.renderObj.move(offset)
-        this.hitbox.move(offset)
-    }
-
-    goto(pos){
-        this.renderObj.goto(pos)
-        this.hitbox.goto(pos)
-    }
-
-    rotate(angle,mark,point){
-        this.renderObj.rotate(angle,mark,point)
-        // this.hitbox.rotate(angle,mark,point)
-    }
-
-    removeCall(){
-
-    }
-
-}
-
 

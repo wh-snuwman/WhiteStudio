@@ -1,23 +1,72 @@
 import { random } from "./random.js";
 
 
+class overlayObj{
+    constructor(obj=null,adj=[0,0]){
+        this.object = obj
+        this.adj = adj
+        
+        // console.log(this.object)
+    }
+}
+
+
+
+
 class tileObject {
-    constructor(robj,hitbox,hor,ver){
+    constructor(robj,hitbox,hor,ver,studio){
+        this.studio = studio
         this.renderObj = robj
-        this.renderObj.zIndex = -1
+        this.renderObj.zIndex = -100000
         this.hitbox = hitbox
         this.horNum = hor
         this.verNum = ver
-        
         this.chunkInnerId = []
         this.chunkId = []
         this.id = null
+        this.tile = 0
+        this.overlayObj = new overlayObj(
+            this.studio.object(this.studio.sysImg,[0,0],[0,0]),[0,0]
+        )
+        this.isRenderOverlay = false
+        this.isBlock = false
+        
     }
+
+
+    setImg(imgObj){
+        if (!imgObj) return
+        this.renderObj.imgObj = imgObj
+    }
+
+
 
     move(offset=[0,0]){
         this.renderObj.move(offset)
         this.hitbox.move(offset)
     }
+
+    setOverlay(obj,adj){
+        this.overlayObj.object = obj
+        this.overlayObj.adj = adj
+    }
+
+    getOverlayObject(){
+        return this.overlayObj.object
+    }
+
+
+    render(){
+        this.renderObj.render()
+        if (this.isRenderOverlay){
+            this.overlayObj.object.goto(this.renderObj.pos)
+            this.overlayObj.object.zIndex = this.overlayObj.object.y
+            this.overlayObj.object.move(this.overlayObj.adj)
+            this.overlayObj.object.render()
+        }
+        
+    }
+
 }
 
 
@@ -30,11 +79,9 @@ export class tileManager{
         this.tileSize_Default = 160
         this.tileSize = size
         this.tileRatio = this.tileSize / this.tileSize_Default
-        // this.chunkSize = 6;
 
         this.adjX = -this.tileSize * 1;
         this.adjY = -this.tileSize * 1;
-        // this.speed = 10
 
         this.upKey=false
         this.leftKey=false
@@ -53,48 +100,45 @@ export class tileManager{
         this.moveUc=0
         this.moveDc=0
 
-        this.chunkSize = 16
-        this.updateFunc = ()=>{}
-        this.reloadFunc = ()=>{}
 
-        // this.horTileCount = Math.floor(this.studio.width / this.tileSize) + 2
-        // this.verTileCount = Math.floor(this.studio.height / this.tileSize) + 2
+        this.updateFunc = ()=>{}
+        this.switchFunc = ()=>{}
+        this.mapReloadFunc = ()=>{}
+        this.reloadFunc = ()=>{}
 
     }
 
     init(){
         this.tile = [];
-        this.horTileCount = Math.floor(this.studio.width / this.tileSize / this.studio.screenRatio) + 2
-        this.verTileCount = Math.floor(this.studio.height / this.tileSize) + 3
-        // this.cameraAdjX = ((this.studio.width-this.tileSize+(1920*(1-this.studio.screenRatio))) / 2)
-        // this.cameraAdjY = ((this.studio.height-(this.tileSize*2)+(1080*(1-this.studio.screenRatio))) / 2)
-        this.cameraAdjX = 0;
-        this.cameraAdjY = 0;
-
-        this.cameraX = 0
-        this.cameraY = 0
+        this.horTileCount = Math.floor(this.studio.defaultDisplaySize[0] / this.tileSize / this.studio.screenRatio) + 2
+        this.verTileCount = Math.floor(this.studio.defaultDisplaySize[1] / this.tileSize) + 2
 
         for (let h=0; h<this.horTileCount; h++){
             for (let v=0; v<this.verTileCount; v++){
                 const obj = this.studio.object(this.studio.sysImg,
-                    [(h*this.tileSize)+ this.cameraAdjX + this.cameraX,(v*this.tileSize) + this.cameraAdjY + this.cameraY],
+                    [(h*this.tileSize),(v*this.tileSize)],
                     [this.tileSize,this.tileSize]
                 )
-                obj.fillColor = [random.random(0,100),random.random(0,10),200,255]
+                
                 const _tileObj = new tileObject(obj,
                     this.studio.object(null,obj.pos,obj.size),
-                    h,v
+                    h,v,this.studio
                 )
                 this.tile.push(_tileObj);
             }
         }
+
+        for (let tileObj of this.tile){
+            this.reloadFunc(tileObj)
+            this.mapReloadFunc(tileObj)
+        }
+        
     } 
 
 
     render(){
         for (let tileObj of this.tile){
-            const renderObj = tileObj.renderObj
-            renderObj.render()
+            tileObj.render()
         }
     }
     
@@ -103,17 +147,13 @@ export class tileManager{
         for (let tileObj of this.tile){
             const hitbox = tileObj.hitbox
             tileObj.move(offset)
+            this.mapReloadFunc(tileObj)
             this.switchOpposition(tileObj)
         }
     }
 
     cameraMove(camera){
         this.move(camera.offset)
-    }
-
-
-    _mod(n, m){
-        return ((n % m) + m) % m;
     }
 
 
@@ -125,43 +165,64 @@ export class tileManager{
     update(){
         for (let tileObj of this.tile){
             this.updateFunc(tileObj)
-            // console.log(tileObj.renderObj.zIndex)
         }
         
     }
 
 
+    allSwitch(){
+        for (let tileObj of this.tile){
+            this.switchFunc(tileObj)
+        }
+    }
+
+    allReload(){
+        for (let tileObj of this.tile){
+            this.reloadFunc(tileObj)
+        }
+    }
+
+    _mapReload(func){
+        this.mapReloadFunc = func
+    }
+
+    switch(func){
+        this.switchFunc = func
+    }
+
     reload(func){
         this.reloadFunc = func
     }
-
 
     switchOpposition(tileObj){
         const hitbox = tileObj.hitbox
         if (hitbox.x > (this.horTileCount*this.tileSize) + this.adjX){
             tileObj.move([-this.horTileCount*this.tileSize,0])
             tileObj.horNum -= this.horTileCount
-            this.reloadFunc(tileObj)
+            this.mapReloadFunc(tileObj)
+            this.switchFunc(tileObj)
             
         } else if (hitbox.x < this.adjX){
             tileObj.move([this.horTileCount*this.tileSize,0])
             tileObj.horNum += this.horTileCount
-            this.reloadFunc(tileObj)
+            this.mapReloadFunc(tileObj)
+            this.switchFunc(tileObj)
+
 
         } else if (hitbox.y > this.verTileCount*this.tileSize  + this.adjY){
             tileObj.move([0,-this.verTileCount*this.tileSize])
             tileObj.verNum -= this.verTileCount
-            this.reloadFunc(tileObj)
+            this.mapReloadFunc(tileObj)
+            this.switchFunc(tileObj)
 
         } else if (hitbox.y < this.adjY){ 
             tileObj.move([0,this.verTileCount*this.tileSize])
             tileObj.verNum += this.verTileCount
-            this.reloadFunc(tileObj)
+            this.mapReloadFunc(tileObj)
+            this.switchFunc(tileObj)
         }  
-        this.chunkInnerId = this._mod(tileObj.verNum,this.chunkSize) * this.chunkSize + this._mod(tileObj.horNum, this.chunkSize)
-        this.chunkId = [Math.floor(tileObj.horNum / this.chunkSize),Math.floor(tileObj.verNum / this.chunkSize)]
 
-        // this.studio.text(this.chunkId,[tileObj.pos])
+        
     }
 
 }

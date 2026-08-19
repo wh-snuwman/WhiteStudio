@@ -1,5 +1,5 @@
-export class LogSet{
-    logTime() {
+export class log{
+    static logTime() {
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -11,17 +11,17 @@ export class LogSet{
     }
     
 
-    Info(msg){
+    static Info(msg){
         this.text = `[INFO][${this.logTime()}] ${msg}`;
         console.log(this.text);
         return this.text;
     }
-    Warn(msg){
+    static Warn(msg){
         this.text = `[WARN][${this.logTime()}] ${msg}`;
         console.warn(this.text);
         return this.text;
     }
-    Error(msg){
+    static Error(msg){
         this.text = `[ERROR][${this.logTime()}] ${msg}`;
         console.error(this.text);
         return this.text;

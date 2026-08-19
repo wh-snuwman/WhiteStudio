@@ -8,9 +8,9 @@ export class textObject{
         this.color = color
         this.font = font
         this.align = align
-        this.isRender = true
+        this.isRender = false
         this.zIndex = 1
-        this.zIndexAdj = 0
+        this.zIndexAdj = [0,0]
         this.screenRatio = 1
         this.renderX = 1
         this.renderY = 1
@@ -26,12 +26,17 @@ export class textObject{
         this.x = pos[0]
         this.y = pos[1]
         this.pos = pos
+        // this.renderX = this.x * this.screenRatio;
+        // this.renderY = this.y * this.screenRatio;
+        
     }
 
     move(offset){
         this.x += offset[0]
         this.y += offset[1]
         this.pos = [this.x,this.y]
+        
+        
     }
 
     cameraMove(camera){
@@ -40,8 +45,6 @@ export class textObject{
 
     _updateInit(){
         this.isRender = false
-        this.renderX = this.x * this.screenRatio;
-        this.renderY = this.y * this.screenRatio;
         
     }
 
@@ -53,7 +56,8 @@ export class textObject{
 
     render(){
         this.isRender = true
-        // console.log(this.zIndex)
+        this.renderX = this.x * this.screenRatio;
+        this.renderY = this.y * this.screenRatio;
     }
     
 }
@@ -64,6 +68,7 @@ export class textManager{
     constructor(studio){
         this.studio = studio
         this.app = studio.app
+        // this.tobjs = []
     }
 
     object(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left'){
@@ -73,6 +78,7 @@ export class textManager{
         return tobj
 
     }
+
 }
 
 
