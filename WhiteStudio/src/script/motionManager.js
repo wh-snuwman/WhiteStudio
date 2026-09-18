@@ -18,6 +18,18 @@ export class motionManager{
         }
     }
 
+    remove(motionObj){
+        this.allMotion[this.allMotion.indexOf(motionObj)].remove()
+        this.allMotion = this.allMotion.filter(m => m !== motionObj)
+    }
+
+    removeAll(){
+        for (let obj of this.allMotion){
+            obj.remove()
+            this.remove(obj)
+        }
+    }
+
 
 }
 class motionObj{
@@ -70,7 +82,16 @@ class motionObj{
         }
     }
 
-
+    remove(){
+        for (let name in this.animations){
+            for(let obj in this.animations[name].frameObjs){
+                this.animations[name].frameObjs[obj].remove = 1
+            }
+            for(let obj in this.animations[name].animation){
+                this.animations[name].animation[obj].remove = 1
+            }
+        }
+    }
 
 
 
@@ -186,8 +207,6 @@ class motionObj{
     getMotion(){
         for (let animationName in this.animations){
             const obj = this.get(animationName)
-            
-            
             if (obj) {
                 const animationData = this.animations[animationName]
                 if (this.flip){obj.flip = this.flip;}
@@ -195,11 +214,12 @@ class motionObj{
                     obj.rotateSet(Math.sin(this.x/7)*5)
                     obj.moveY(Math.cos(this.x/3.5)*5)
                 }
-                    
-                
                 return obj
             }
         }  
-        return this.studio.object(null,[0,0],[0,0])
+        if (!this._emptyObj){
+            this._emptyObj = this.studio.object(null,[0,0],[0,0])
+        }
+        return this._emptyObj
     }
 }

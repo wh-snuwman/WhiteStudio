@@ -27,4 +27,10 @@ export class log{
         return this.text;
     }
 
+    static Dev(msg){
+        this.text = `%c [DEVINFO][${this.logTime()}] ${msg}`;
+        console.log(this.text,'color:white;background:blue');
+        return this.text;
+    }
+
 }

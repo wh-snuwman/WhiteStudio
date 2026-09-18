@@ -23,10 +23,8 @@ export class gametManager {
         document.body.insertAdjacentHTML('afterbegin',`
         <canvas id="${this.id}"></canvas>
         `)
-        
 
         this.defaultDisplaySize = [1920,1080]
-
         this.canvas = document.getElementById(this.id)
         this.canvas.width = innerWidth
         this.canvas.height = innerHeight
@@ -40,6 +38,8 @@ export class gametManager {
             transform: translate(-50%, -50%);
             width: 100vw;
             height: 100vh;
+            z-index: -1;
+            touch-action: none;
         `;
         this.app = new core(this.canvas);
         this.textCanvas = null;
@@ -73,7 +73,52 @@ export class gametManager {
             this.resizeDisplay()
         })
         this._update()
+
+        this.keyMapping = {
+            'KeyA': 'a', 'KeyB': 'b', 'KeyC': 'c', 'KeyD': 'd', 'KeyE': 'e',
+            'KeyF': 'f', 'KeyG': 'g', 'KeyH': 'h', 'KeyI': 'i', 'KeyJ': 'j',
+            'KeyK': 'k', 'KeyL': 'l', 'KeyM': 'm', 'KeyN': 'n', 'KeyO': 'o',
+            'KeyP': 'p', 'KeyQ': 'q', 'KeyR': 'r', 'KeyS': 's', 'KeyT': 't',
+            'KeyU': 'u', 'KeyV': 'v', 'KeyW': 'w', 'KeyX': 'x', 'KeyY': 'y','KeyZ': 'z',
+
+            // 'Space': ' ',
+            'Digit1': '1',
+            'Digit2': '2',
+            'Digit3': '3',
+            'Digit4': '4',
+            'Digit5': '5',
+            'Digit6': '6',
+            'Digit7': '7',
+            'Digit8': '8',
+            'Digit9': '9',
+            'Digit0': '0',
+            "Semicolon" : ';',
+            "Equal" : '=',
+            "Comma" : ',',
+            "Minus" : '-',
+            "Period": '.',
+            "Slash": "/",
+        };
         
+        this.shiftkeyMapping = {
+            'Digit1': '!',
+            'Digit2': '@',
+            'Digit3': '#',
+            'Digit4': '$',
+            'Digit5': '%',
+            'Digit6': '^',
+            'Digit7': '&',
+            'Digit8': '*',
+            'Digit9': '(',
+            'Digit0': ')',
+            "Semicolon" : ':',
+            "Equal" : '+',
+            "Comma" : '<',
+            "Minus" : '_',
+            "Period": '>',
+            "Slash": "?",
+        }
+
     }
 
 
@@ -88,6 +133,26 @@ export class gametManager {
     }
 
 
+    keyBoardInput() {
+        for (const code in this.keyMapping) {
+            if (this.EventManger.down_key[code]) {
+                let key = this.keyMapping[code] 
+                if (this.EventManger.press_key['ShiftLeft']){
+                    
+                    if (code in this.shiftkeyMapping){
+                        key = this.shiftkeyMapping[code]
+                    } else {
+                        key = key.toUpperCase()
+                    }
+
+                }
+                return key;
+            }
+        }
+        return null;
+    }
+
+
     getMouse(){
         return {
             click_l:this.EventManger.click_l,
@@ -95,6 +160,13 @@ export class gametManager {
             press_r:this.EventManger.press_r,
             press_l:this.EventManger.press_l,
             mousepos:this.EventManger.mousepos,
+            wheel:this.EventManger.wheel,
+        }
+    }
+
+    getTouch(){
+        return {
+            touchpos:this.EventManger.touchpos,
         }
     }
 
@@ -126,19 +198,25 @@ export class gametManager {
     }
 
     _update() {
-        const loop = () => {
+        let lastTime = performance.now();
+
+        const loop = (now) => {
+
+            const dt = Math.min((now - lastTime) / 1000, 0.05); // 초 단위, 급격한 스파이크는 클램프
+            lastTime = now;
+
             for (let obj of this.objectList){
                 obj._updateInit()
             }
 
-            this.updatefunc()
+            this.updatefunc(dt)
             for (let key in this.sceneFunc){
                 if (this.nowScene === key){
-                    this.sceneFunc[key]()
+                    this.sceneFunc[key](dt)
                     break
                 }
             }
-            this.endLoopfunc()
+            this.endLoopfunc(dt)
 
 
             
@@ -169,6 +247,18 @@ export class gametManager {
 
             this.sceneChangeDetect = false
             this.EventManger.resetState()
+            
+
+            const len = this.objectList.length
+
+            for (let i=len;i>=0;i--){
+                const obj = this.objectList[i]
+                if ((obj instanceof object || obj instanceof textObject)&& obj.remove === 1){
+                    this.objectList.splice(i,1)
+
+                }
+            }
+            
             requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);
@@ -176,11 +266,20 @@ export class gametManager {
 
 
     object(img, pos, size = null, vertex = null, texcoord = null){
+
         const obj = new object(img,pos,size,vertex,texcoord)
         obj.ratioSet(this.screenRatio)
         this.objectList.push(obj)
         return obj
     }
+
+
+
+    removeObject(obj){
+        this.objectList.splice(this.objectList.indexOf(obj),1)
+    }
+
+
 
 
     rect(pos,size,color=[0,0,0,255]){
@@ -207,6 +306,25 @@ export class gametManager {
         return Math.sqrt((pos2[0] - pos1[0])**2 + (pos2[1] - pos1[1])**2)
     }
 
+
+    angleGet(pos1, pos2) {
+        const dx = pos2[0] - pos1[0];
+        const dy = pos2[1] - pos1[1];
+        
+        let degree = Math.atan2(dy, dx) * (180 / Math.PI);
+        if (degree < 0) degree += 360;
+        
+        return degree;
+    }
+ 
+    getDelta(angleDegree, speed = 1) {
+        const radian = angleDegree * (Math.PI / 180); // 도 → 라디안 변환
+        
+        const dx = Math.cos(radian) * speed;
+        const dy = Math.sin(radian) * speed;
+        
+        return { dx, dy };
+    }
 
     fill(color=Array){
         const r = color[0]
@@ -247,16 +365,14 @@ export class gametManager {
 
 
     scene(wantedScene,func){
-        if (this.nowScene === wantedScene){
-            this.sceneFunc[wantedScene] = func
-        }
+        // if (this.nowScene === wantedScene){
+        this.sceneFunc[wantedScene] = func
+        // }
     }
 
 
     _renderTextObj(tobj){
         if (!tobj.isRender) return
-
-        // console.log(tobj.renderX,tobj.renderY)
         
         this.app.text(
             tobj.text,
@@ -283,7 +399,8 @@ export class gametManager {
             obj.texcoord,
             obj.fillColor,
             obj.alpha !== undefined ? obj.alpha : 255,
-            obj.flip
+            obj.flip,
+            obj.blur
         )
 
     }

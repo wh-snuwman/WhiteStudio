@@ -14,6 +14,7 @@ export class textObject{
         this.screenRatio = 1
         this.renderX = 1
         this.renderY = 1
+        this.remove = 0
     }
 
     init(app,ratio){
@@ -46,7 +47,8 @@ export class textObject{
     _updateInit(){
         this.isRender = false
         
-    }
+        
+    } 
 
 
     ratioSet(ratio){

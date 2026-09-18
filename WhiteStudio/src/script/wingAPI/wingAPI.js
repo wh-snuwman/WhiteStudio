@@ -8,7 +8,9 @@ export class wingAPI {
         this.closeFn = () =>{};
         this.startFn = () =>{};
         this.loginFn = () =>{};
+        this.loginFailFn = () =>{};
         this.signupFn = () =>{};
+        this.signupFailFn = () =>{};
         this.isManualClose = false;
         this.isOpen = false;
         this.openPromise = null;
@@ -80,6 +82,15 @@ export class wingAPI {
         this.signupFn = fn
     }
 
+    signFail(fn){
+        this.signupFailFn = fn
+    }
+
+    loginFail(fn){
+        this.loginFailFn = fn
+    }
+
+    
     error(fn){
         this.errorFn = fn
     }
@@ -97,10 +108,17 @@ export class wingAPI {
     }
 
     message(recvdata){
-        const msgLoads = JSON.parse(recvdata.data)
+        let msgLoads = null;
+        try{
+            msgLoads = JSON.parse(recvdata.data)
+        } catch (error){
+            log.Error(`json 파싱실패: ${error}`)
+            return
+        }
+
         const CODE = msgLoads.code
         const DATA = msgLoads.data
-
+        // console.log(CODE === '00001')
         if (this.recvFn){
             if (this._isSysMsg(CODE)){
                 const CODE_SYS = this._SysMsgEdit(CODE)
@@ -110,6 +128,8 @@ export class wingAPI {
                         log.Info("가입완료. 로그인 가능")
                         this.signupFn()
                     } else {
+                        this.signupFailFn(DATA.state)
+                        // console.log(DATA)
                         log.Info("가입실패. 비밀번호가 너무 짧거나(4글자 미만) 중복닉네임 입니다.")
                     }
                     
@@ -121,6 +141,7 @@ export class wingAPI {
                         this.isLogin = true
                         this.loginFn()
                     } else {
+                        this.loginFailFn(DATA.state)
                         log.Info("로그인 실패. 계정이 없거나 비밀번호가 틀려렸습니다.")
                     }
 
@@ -131,8 +152,6 @@ export class wingAPI {
                         log.Info("그룹참가 실패")
                     }
                 } else if (CODE_SYS == 'Lgroup'){
-                    // console.log(DATA)
-                    // console.log('asd')
                     if (DATA.state == 'success'){
                         log.Info(`그룹탈퇴 완료`)
                     } else {

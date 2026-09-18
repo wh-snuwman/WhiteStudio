@@ -13,9 +13,14 @@ export class movementExtension{
         this.smooth = 0.8
         this.wallCheckDistance = 20
         this.tileBlockingActivate = false
-        this.direction = null
-
+        this.direction = {
+            left:false,
+            right:false,
+            up:false,
+            down:false,
+        }
         this.pos = [0,0]
+        this.lock = false
     }
 
     setState(speed,smooth){
@@ -30,6 +35,11 @@ export class movementExtension{
     }
 
 
+    goto(pos){
+        this.pos = pos
+    }
+
+
     connectTile(tile,entity){
         this.tile = tile
         this.entity = entity
@@ -37,35 +47,66 @@ export class movementExtension{
     }
 
 
-    move(reverse=false){ 
+    lockMove(){
+        this.left = 0
+        this.right = 0
+        this.up = 0
+        this.down = 0
+        this.direction.left = false
+        this.direction.right = false
+        this.direction.up = false
+        this.direction.down = false
+        return [0,0]
+    }
+
+
+    move(reverse=false){
+        if (this.lock) {
+            this.left = 0
+            this.right = 0
+            this.up = 0
+            this.down = 0
+            this.direction.left = false
+            this.direction.right = false
+            this.direction.up = false
+            this.direction.down = false
+            return [0,0]
+        }
+
         if (this.studio.getPressKey('KeyA')){
             this.left =  this.speed
-            this.direction = 'left'
+            this.direction.left = true
         } else {
             this.left = this.left * this.smooth
+            this.direction.left = false
         }
 
         if (this.studio.getPressKey('KeyD')){
             this.right =  this.speed
-            this.direction = 'right'
+            this.direction.right = true
         } else {
             this.right = this.right * this.smooth
+            this.direction.right = false
+            
         }
 
         if (this.studio.getPressKey('KeyW')){
             this.up =  this.speed
-            this.direction = 'up'
-
+            this.direction.up = true
+            
+            
         } else {
             this.up = this.up * this.smooth
+            this.direction.up = false
             
         }
         if (this.studio.getPressKey('KeyS')){
             this.down =  this.speed
-            this.direction = 'down'
-
+            this.direction.down = true
+            
         } else {
             this.down = this.down * this.smooth
+            this.direction.down = false
         }
         
         if (this.tileBlockingActivate){
@@ -116,20 +157,25 @@ export class movementExtension{
     }
 
     getAbsolute(reverse=false){
-        if (reverse){
-            return [-this.pos[0],-this.pos[1]]
-
+        if (!this.lock){
+            if (reverse){
+                return [-this.pos[0],-this.pos[1]]
+    
+            }
+            return this.pos
         }
-        return this.pos
     }
 
 
     get(reverse=false){
-        if (reverse){
-            return [-this.mx,-this.my]
-
+        if (!this.lock){
+            if (reverse){
+                return [-this.mx,-this.my]
+    
+            }
+            return [this.mx,this.my]
         }
-        return [this.mx,this.my]
+
     }
     Direction(){
         const centerX = obj.x + state.moveX + (obj.width / 2) - state.cameraAdjX ;

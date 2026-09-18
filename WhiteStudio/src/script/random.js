@@ -36,4 +36,20 @@ export class random {
         }
         return id
     }
+
+    static newId(){
+        let id = ''
+        for (let i=0; i<48;i++){
+            id = id + this.choice([...'1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM'])
+        }
+        return id
+    }
+
+    static randomLenId(){
+        let id = ''
+        for (let i=0; i<this.random(0,48);i++){
+            id = id + this.choice([...'1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM'])
+        }
+        return id
+    }
 }

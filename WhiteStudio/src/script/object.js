@@ -1,3 +1,4 @@
+// import { studio } from "../../../project/script/init";
 
 function defualtVertexCalc(img,pos,size){
     const w = size ? size[0] : img.width;
@@ -51,6 +52,9 @@ export class object {
         this.flip = [false,false]
         this.cameraApply = false
 
+        this.blur = 0
+        this.remove = false // 삭제 요청
+
     }
 
     ratioSet(ratio){
@@ -82,18 +86,18 @@ export class object {
     }
 
 
-    goto(pos=Array,mark='default'){
+        goto(pos=Array, mark='default'){
         let addX = pos[0] - this.x
         let addY = pos[1] - this.y 
         if (mark == 'center'){
             addX -= this.width/2 
             addY -= this.height/2
         }
-        this.x +=  pos[0] - this.x
-        this.y += pos[1] - this.y 
+        this.x += addX
+        this.y += addY
         for(let i = 0; i < this.vertex.length; i+=2){
-            this.vertex[ i ] += addX
-            this.vertex[ i + 1 ] += addY
+            this.vertex[i] += addX
+            this.vertex[i+1] += addY
         }
         this._synchronization_pos()
     }
@@ -222,18 +226,18 @@ export class object {
     }
 
     isEncounterPos2(pos){
-        if (((this.renderX <= pos[0])  && (pos[0] <= this.renderX + this.renderW)) && ((this.renderY <= pos[1]) && (pos[1] <= this.renderY + this.renderH))) {          
-            return true  
-        }
-        return false
-    }
-
-    isSelect(){
-        if (this.isEncounterPos2(this.EventManger.mousepos) && this.EventManger.click_l){
+        if (((this.x <= pos[0])  && (pos[0] <= this.x + this.w)) && ((this.y <= pos[1]) && (pos[1] <= this.y + this.h))) {          
             return true
         }
         return false
     }
+
+    // isSelect(){
+    //     if (this.isEncounterPos2(this.EventManger.click_l) && this.EventManger.click_l){
+    //         return true
+    //     }
+    //     return false
+    // }
 
     _updateInit(){
         this.isRender = false
@@ -249,7 +253,16 @@ export class object {
         this.isRender = true
         this._synchronization_pos()
         this._synchronization_size()
+        this.zIndex = Math.floor(this.zIndex)
+        this.renderX = this.x * this.screenRatio;
+        this.renderY = this.y * this.screenRatio;
+        this.renderW = this.width * this.screenRatio;
+        this.renderH = this.height * this.screenRatio;
+        this.scaledVertex = this.vertex ? this.vertex.map(v => v * this.screenRatio) : null;
     }
+
+
+
     
 }
 
@@ -340,12 +353,16 @@ export class videoObject{
         this.video.play()
     }
 
-    render(){
+    render() {  
+        if (!this.img) return;
         this.isRender = true
-        this.renderX = this.x * this.screenRatio
-        this.renderY = this.y * this.screenRatio
-        this.renderW = this.width * this.screenRatio
-        this.renderH = this.height * this.screenRatio
+        this._synchronization_pos()
+        this._synchronization_size()
+        this.renderX = this.x * this.screenRatio;
+        this.renderY = this.y * this.screenRatio;
+        this.renderW = this.width * this.screenRatio;
+        this.renderH = this.height * this.screenRatio;
+        this.scaledVertex = this.vertex ? this.vertex.map(v => v * this.screenRatio) : null;
     }
 
     

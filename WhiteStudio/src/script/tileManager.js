@@ -5,8 +5,12 @@ class overlayObj{
     constructor(obj=null,adj=[0,0]){
         this.object = obj
         this.adj = adj
-        
-        // console.log(this.object)
+    }
+
+    remove(){
+        if (this.object){
+            this.object.remove = 1
+        }
     }
 }
 
@@ -21,9 +25,9 @@ class tileObject {
         this.hitbox = hitbox
         this.horNum = hor
         this.verNum = ver
-        this.chunkInnerId = []
+        this.chunkInnerId = null
         this.chunkId = []
-        this.id = null
+        this.id = random.simpleId()
         this.tile = 0
         this.overlayObj = new overlayObj(
             this.studio.object(this.studio.sysImg,[0,0],[0,0]),[0,0]
@@ -35,7 +39,7 @@ class tileObject {
 
 
     setImg(imgObj){
-        if (!imgObj) return
+        // if (!imgObj) return
         this.renderObj.imgObj = imgObj
     }
 
@@ -46,7 +50,7 @@ class tileObject {
         this.hitbox.move(offset)
     }
 
-    setOverlay(obj,adj){
+    setOverlay(obj,adj=[0,0]){
         this.overlayObj.object = obj
         this.overlayObj.adj = adj
     }
@@ -57,14 +61,24 @@ class tileObject {
 
 
     render(){
-        this.renderObj.render()
-        if (this.isRenderOverlay){
+        if (this.renderObj.y < this.studio.defaultDisplaySize[1] && this.renderObj.imgObj){
+            this.renderObj.render()
+        } 
+
+
+        if (this.isRenderOverlay && this.overlayObj.object.y < this.studio.defaultDisplaySize[1]){
             this.overlayObj.object.goto(this.renderObj.pos)
             this.overlayObj.object.zIndex = this.overlayObj.object.y
             this.overlayObj.object.move(this.overlayObj.adj)
             this.overlayObj.object.render()
         }
         
+    }
+
+    remove(){
+        this.renderObj.remove = 1
+        this.hitbox.remove = 1
+        this.overlayObj.remove()
     }
 
 }
@@ -109,9 +123,14 @@ export class tileManager{
     }
 
     init(){
+        for (let tobj of this.tile){
+            tobj.remove()
+        }
+
         this.tile = [];
-        this.horTileCount = Math.floor(this.studio.defaultDisplaySize[0] / this.tileSize / this.studio.screenRatio) + 2
-        this.verTileCount = Math.floor(this.studio.defaultDisplaySize[1] / this.tileSize) + 2
+        this.horTileCount = Math.floor(this.studio.defaultDisplaySize[0] / this.tileSize) + 2
+        this.verTileCount = Math.floor(this.studio.defaultDisplaySize[1] / this.tileSize) + 4
+
 
         for (let h=0; h<this.horTileCount; h++){
             for (let v=0; v<this.verTileCount; v++){
@@ -220,9 +239,9 @@ export class tileManager{
             tileObj.verNum += this.verTileCount
             this.mapReloadFunc(tileObj)
             this.switchFunc(tileObj)
-        }  
-
-        
+        } 
     }
+
+    
 
 }

@@ -2,12 +2,15 @@ export class eventManger {
     constructor(studio){
         this.studio = studio
         this.mousepos = [0, 0];
+        this.touchpos = [[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
         this.click_l = false;
         this.click_r = false;
         this.press_l = false;
         this.press_r = false
         this.down_key = {}
         this.press_key = {}
+        this.wheel = 0
+        
 
         this.key_code = [
         // Modifier / System
@@ -70,6 +73,10 @@ export class eventManger {
             ];
         });
 
+        // document.addEventListener('touchmove',(event)=>{
+        //     console.log(event)
+        // })
+
         document.addEventListener('keydown', (event) => {
             this.down_key[event.code] = true
             this.press_key[event.code] = true
@@ -78,10 +85,37 @@ export class eventManger {
         document.addEventListener('keyup', (event) => {
             this.press_key[event.code] = false
         });
-
         
-            
+        document.addEventListener('wheel', (event) => {
+            this.wheel = event.deltaY
+        });
+        
+
+        window.addEventListener('blur',()=>{
+            this.click_l = false;
+            this.click_r = false;
+            this.press_l = false;
+            this.press_r = false
+            for (let code of this.key_code){
+                this.down_key[code] = false
+                this.press_key[code] = false
+            }
+        })
     
+        window.addEventListener('touchmove', (event) => {
+            const ratio = this.studio.screenRatio;
+            const dpr = this.studio.dpr;
+            for (let i = 0; i < event.touches.length; i++) {
+                const touch = event.touches[i];
+
+                this.touchpos[i] = [
+                    (touch.clientX / ratio) * dpr,
+                    (touch.clientY / ratio) * dpr
+                ];
+            }
+        });
+
+
     }
     
     resetState() {
@@ -90,5 +124,6 @@ export class eventManger {
         for (let i in this.down_key){
             this.down_key[i] = false
         }
+        this.wheel = 0
     }
 }

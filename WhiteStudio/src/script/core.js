@@ -9,10 +9,17 @@ export class core {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
         // WebGL2 버전에 맞춘 버텍스 셰이더 (GLSL ES 300)
+        // 블러 프로그램과 공유해서 쓰기 때문에, a_position/a_texcoord의 attribute
+        // location을 두 프로그램 모두 0/1로 고정 바인딩한다 (아래 _createProgram 참고).
         const vertexShaderSource = `#version 300 es
             in vec2 a_position;
             in vec2 a_texcoord;
             uniform vec2 u_resolution;
+            // 1.0이면 y를 뒤집는다(캔버스에 직접 그릴 때 필요한 보정),
+            // 0.0이면 뒤집지 않는다(오프스크린 FBO에 그릴 때 사용 - 텍스처에는
+            // 이 캔버스용 보정이 들어가면 안 되므로, 블러 파이프라인처럼 FBO를
+            // 거쳐 나온 텍스처를 다시 텍스처로 쓰는 경우 반전 문제가 생긴다).
+            uniform float u_flipY;
             out vec2 v_texcoord;
 
             void main() {
@@ -20,7 +27,8 @@ export class core {
                 vec2 zeroToTwo = zeroToOne * 2.0;
                 vec2 clipSpace = zeroToTwo - 1.0;
 
-                gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+                float flipMul = (u_flipY > 0.5) ? -1.0 : 1.0;
+                gl_Position = vec4(clipSpace * vec2(1, flipMul), 0, 1);
                 v_texcoord = a_texcoord;
             }
         `;
@@ -54,9 +62,49 @@ export class core {
             }
         `;
 
+        // 블러 전용 프래그먼트 셰이더 (분리 가우시안 블러 1패스).
+        // u_texelStep으로 방향(가로/세로)을 받아 같은 셰이더로 두 패스를 모두 처리한다.
+        // 루프 상한(MAX_RADIUS)은 컴파일 타임 상수로 고정하고, 실제 반경(u_radius)만큼만
+        // continue로 건너뛰는 방식 - WebGL2/ANGLE에서 안전하게 동작하는 패턴이다.
+        const blurFragmentShaderSource = `#version 300 es
+            precision mediump float;
+
+            in vec2 v_texcoord;
+            uniform sampler2D u_texture;
+            uniform vec2 u_texelStep; // 방향별 1픽셀 크기: (1/width, 0) 또는 (0, 1/height)
+            uniform float u_radius;   // 블러 반경 (px)
+
+            out vec4 outColor;
+
+            const int MAX_RADIUS = 32;
+
+            void main() {
+                float radius = min(u_radius, float(MAX_RADIUS));
+                float sigma = max(radius / 2.0, 0.0001);
+                float twoSigmaSq = 2.0 * sigma * sigma;
+
+                vec4 sum = vec4(0.0);
+                float weightSum = 0.0;
+
+                for (int i = -MAX_RADIUS; i <= MAX_RADIUS; i++) {
+                    float fi = float(i);
+                    if (abs(fi) > radius) continue;
+                    float weight = exp(-(fi * fi) / twoSigmaSq);
+                    // 프리멀티플라이드 알파 텍스처를 그대로 가중합 후 나누면
+                    // 투명 경계에서 어두운 헤일로가 생기지 않는다.
+                    sum += texture(u_texture, v_texcoord + u_texelStep * fi) * weight;
+                    weightSum += weight;
+                }
+
+                outColor = sum / weightSum;
+            }
+        `;
+
         const vertexShader = this._compileShader(gl.VERTEX_SHADER, vertexShaderSource);
         const fragmentShader = this._compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
-        this.program = this._createProgram(vertexShader, fragmentShader);
+        // a_position=0, a_texcoord=1로 고정 바인딩 → 아래 buffer/vertexAttribPointer
+        // 설정을 두 프로그램(this.program, this.blurProgram) 모두에서 그대로 재사용 가능.
+        this.program = this._createProgram(vertexShader, fragmentShader, { a_position: 0, a_texcoord: 1 });
         gl.useProgram(this.program);
 
         this.positionLocation = gl.getAttribLocation(this.program, "a_position");
@@ -64,6 +112,28 @@ export class core {
         this.resolutionLocation = gl.getUniformLocation(this.program, "u_resolution");
         this.colorLocation = gl.getUniformLocation(this.program, "u_color");
         this.alphaLocation = gl.getUniformLocation(this.program, "u_alpha");
+        this.flipYLocation = gl.getUniformLocation(this.program, "u_flipY");
+        gl.uniform1f(this.flipYLocation, 1.0); // 기본값: 캔버스에 직접 그리는 경우
+
+        // 블러 프로그램 (같은 버텍스 셰이더 재사용)
+        const blurFragmentShader = this._compileShader(gl.FRAGMENT_SHADER, blurFragmentShaderSource);
+        this.blurProgram = this._createProgram(vertexShader, blurFragmentShader, { a_position: 0, a_texcoord: 1 });
+        this.blurResolutionLocation = gl.getUniformLocation(this.blurProgram, "u_resolution");
+        this.blurTexelStepLocation = gl.getUniformLocation(this.blurProgram, "u_texelStep");
+        this.blurRadiusLocation = gl.getUniformLocation(this.blurProgram, "u_radius");
+        this.blurTextureLocation = gl.getUniformLocation(this.blurProgram, "u_texture");
+        this.blurFlipYLocation = gl.getUniformLocation(this.blurProgram, "u_flipY");
+
+        // 블러 패스는 항상 FBO에만 그리므로 flipY는 항상 꺼둔다(한 번만 설정하면 됨).
+        gl.useProgram(this.blurProgram);
+        gl.uniform1f(this.blurFlipYLocation, 0.0);
+
+        // 블러 셰이더의 MAX_RADIUS 상수와 반드시 일치해야 한다.
+        this.maxBlurRadius = 32;
+        this._blurTargetA = null; // 캡처/세로블러 결과용 FBO
+        this._blurTargetB = null; // 가로블러 결과용 FBO
+
+        gl.useProgram(this.program); // 기본 프로그램으로 복귀
 
         // GC 방지를 위한 재사용 버퍼 배열.
         // 정점 6개 x 2차원 = quad 1개당 12 float. maxBatchQuads개의 quad를
@@ -123,11 +193,19 @@ export class core {
         return shader;
     }
 
-    _createProgram(vs, fs) {
+    // attribLocations: { "a_position": 0, "a_texcoord": 1 } 형태로 넘기면
+    // link 전에 bindAttribLocation을 걸어 프로그램 간 attribute 인덱스를 통일한다.
+    // (여러 프로그램이 같은 버퍼/vertexAttribPointer 설정을 그대로 공유하기 위함)
+    _createProgram(vs, fs, attribLocations = null) {
         const gl = this.gl;
         const program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
+        if (attribLocations) {
+            for (const name in attribLocations) {
+                gl.bindAttribLocation(program, attribLocations[name], name);
+            }
+        }
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
             const info = gl.getProgramInfoLog(program);
@@ -320,7 +398,7 @@ export class core {
     }
 
 
-    drawImage(image, x, y, w, h, vertex_ = null, texcoord_ = null, fillColor_ = null, alpha_ = 1.0, flip = [false,false]) {
+    drawImage(image, x, y, w, h, vertex_ = null, texcoord_ = null, fillColor_ = null, alpha_ = 1.0, flip = [false,false], blur_ = 0) {
         const gl = this.gl;
 
         // pos 형태 [x, y] 배열 오버로딩 지원: drawImage(image, [x, y], w, h, ...)
@@ -335,6 +413,15 @@ export class core {
             texcoord_ = arguments[4] ?? null;
             fillColor_ = arguments[5] ?? null;
             alpha_ = arguments[6] ?? 1.0;
+            flip = arguments[7] ?? [false, false]; // 기존에 이 분기에서 누락되어 있던 flip 반영 추가
+            blur_ = arguments[8] ?? 0;
+        }
+
+        // 블러 값이 지정되면 오프스크린 2-패스(가로→세로) 가우시안 블러 파이프라인으로 위임한다.
+        // (내부적으로 블러된 결과를 만든 뒤 blur_=0으로 자기 자신을 다시 호출해 최종 합성한다)
+        if (blur_ && blur_ > 0) {
+            this._drawImageWithBlur(image, x, y, w, h, vertex_, texcoord_, fillColor_, alpha_, flip, blur_);
+            return;
         }
 
         // Raw WebGLTexture 대응
@@ -348,7 +435,28 @@ export class core {
 
         const targetAlpha = alpha_ > 1.0 ? alpha_ / 255.0 : alpha_;
 
-        // 버텍스 좌표 계산 및 전역 Float32Array 재사용
+        // 버텍스/텍스처 좌표 계산 (재사용 스크래치 배열에 채워넣음)
+        this._computeQuadArrays(x, y, w, h, vertex_, texcoord_, flip);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.posArray, 0, 12);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.texArray, 0, 12);
+
+        gl.uniform2f(this.resolutionLocation, gl.canvas.width, gl.canvas.height);
+        gl.uniform1f(this.flipYLocation, 1.0); // 캔버스에 직접 그리는 경로이므로 항상 켜둔다
+
+        this._applyFillColorUniform(fillColor_);
+        gl.uniform1f(this.alphaLocation, targetAlpha);
+
+        gl.bindTexture(gl.TEXTURE_2D, imgObj.texture);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    // 사각형 1개(quad)의 position/texcoord 12-float 배열을 this.posArray/this.texArray에 채운다.
+    // drawImage의 일반 경로와 블러 파이프라인의 캡처 패스가 공통으로 사용한다.
+    _computeQuadArrays(x, y, w, h, vertex_, texcoord_, flip) {
         if (vertex_ == null) {
             const x2 = x + w;
             const y2 = y + h;
@@ -362,10 +470,6 @@ export class core {
             for (let i = 0; i < 12; i++) this.posArray[i] = vertex_[i];
         }
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.posArray, 0, 12);
-
-        // UV 좌표 계산 및 전역 Float32Array 재사용
         if (texcoord_ == null) {
             this.texArray[0] = 0; this.texArray[1] = 0;
             this.texArray[2] = 1; this.texArray[3] = 0;
@@ -385,29 +489,145 @@ export class core {
             for (let i = 0; i < 12; i++) this.texArray[i] = texcoord_[i];
         }
 
-        if (flip[0]){
-            for(let i=0; i<this.texArray.length; i+=2){
-                this.texArray[i] = 1 - this.texArray[i]
+        if (flip[0]) {
+            for (let i = 0; i < this.texArray.length; i += 2) {
+                this.texArray[i] = 1 - this.texArray[i];
             }
         }
-        if (flip[1]){
-            for(let i=0; i<this.texArray.length; i+=2){
-                this.texArray[i+1] = 1 - this.texArray[i+1]
+        if (flip[1]) {
+            for (let i = 0; i < this.texArray.length; i += 2) {
+                this.texArray[i + 1] = 1 - this.texArray[i + 1];
             }
         }
+    }
 
+    // ── 블러 파이프라인 ──────────────────────────────────────────────
+    // blur_(px 반경)이 지정된 drawImage 호출을 처리한다.
+    // 1) 화면에 그려질 크기(w×h)의 FBO에 원본을(texcoord_/flip 반영해) 1:1로 캡처
+    // 2) 가로 블러 (A→B), 3) 세로 블러 (B→A)
+    // 4) 캔버스로 복귀해 blur_=0으로 자기 자신을 재호출, 블러된 텍스처를 정상 합성으로 그린다.
+    _drawImageWithBlur(image, x, y, w, h, vertex_, texcoord_, fillColor_, alpha_, flip, blurRadius) {
+        const gl = this.gl;
+        const imgObj = (image && image.texture) ? image : { texture: image, isVideo: false };
 
+        // 캡처 해상도: 화면에 그려질 크기 그대로 사용해 "보이는 크기" 기준으로 블러를 적용한다.
+        // (너무 큰 값이 들어와도 FBO가 과도하게 커지지 않도록 상한을 둔다)
+        const capW = Math.max(1, Math.min(4096, Math.round(Math.abs(w))));
+        const capH = Math.max(1, Math.min(4096, Math.round(Math.abs(h))));
+        const radius = Math.max(0, Math.min(this.maxBlurRadius, blurRadius));
+
+        this._ensureBlurTargets(capW, capH);
+
+        const prevViewport = gl.getParameter(gl.VIEWPORT);
+
+        // 오프스크린 패스는 단순 리샘플이므로 블렌딩을 끄고 그대로 덮어쓴다.
+        // (블렌딩 켜진 채로 하면 투명 픽셀이 이전 내용과 섞여버림)
+        gl.disable(gl.BLEND);
+
+        // 1) 캡처 패스: 원본을 texcoord_/flip 반영해서 capW×capH FBO(A)에 그대로 옮긴다.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._blurTargetA.framebuffer);
+        gl.viewport(0, 0, capW, capH);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(this.program);
+        gl.uniform2f(this.resolutionLocation, capW, capH);
+        gl.uniform1f(this.flipYLocation, 0.0); // FBO에 그리는 것이므로 캔버스용 반전을 끈다
+        this._applyFillColorUniform(null); // 색 보정 없이 원본 그대로
+        gl.uniform1f(this.alphaLocation, 1.0);
+
+        this._computeQuadArrays(0, 0, capW, capH, null, texcoord_, flip);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.posArray, 0, 12);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.texArray, 0, 12);
 
-        gl.uniform2f(this.resolutionLocation, gl.canvas.width, gl.canvas.height);
-
-        this._applyFillColorUniform(fillColor_);
-        gl.uniform1f(this.alphaLocation, targetAlpha);
-
         gl.bindTexture(gl.TEXTURE_2D, imgObj.texture);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // 2) 가로 블러: A → B
+        this._runBlurPass(this._blurTargetA.texture, this._blurTargetB.framebuffer, capW, capH, 1 / capW, 0, radius);
+        // 3) 세로 블러: B → A (최종 결과가 다시 A에 담김)
+        this._runBlurPass(this._blurTargetB.texture, this._blurTargetA.framebuffer, capW, capH, 0, 1 / capH, radius);
+
+        // 캔버스 프레임버퍼로 복귀, 블렌딩 재활성화 (기존 상태로 원복)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+        // 4) 최종 패스: 블러된 텍스처(A)를 실제 위치(x,y,w,h 또는 커스텀 vertex_)에
+        //    fillColor_/alpha_를 그대로 반영해서 정상 합성으로 그린다.
+        //    캡처 단계에서 이미 texcoord_/flip을 반영했으므로 여기서는 기본 좌표(0~1)를 쓴다.
+        gl.useProgram(this.program);
+        this.drawImage(
+            { texture: this._blurTargetA.texture, isVideo: false },
+            x, y, w, h,
+            vertex_, null, fillColor_, alpha_, [false, false], 0
+        );
     }
+
+    // 블러 셰이더로 1회 패스(방향 stepX/stepY)를 수행해 destFramebuffer에 그린다.
+    _runBlurPass(srcTexture, destFramebuffer, w, h, stepX, stepY, radius) {
+        const gl = this.gl;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, destFramebuffer);
+        gl.viewport(0, 0, w, h);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(this.blurProgram);
+        gl.uniform2f(this.blurResolutionLocation, w, h);
+        gl.uniform2f(this.blurTexelStepLocation, stepX, stepY);
+        gl.uniform1f(this.blurRadiusLocation, radius);
+        gl.uniform1i(this.blurTextureLocation, 0);
+
+        // FBO 전체를 덮는 풀스크린 사각형 (좌표는 항상 기본값 0~1)
+        this._computeQuadArrays(0, 0, w, h, null, null, [false, false]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.posArray, 0, 12);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.texArray, 0, 12);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, srcTexture);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    // 블러용 ping-pong FBO 2개(A, B)를 필요한 크기로 준비한다. 크기가 같으면 재할당하지 않는다.
+    _ensureBlurTargets(w, h) {
+        if (!this._blurTargetA) this._blurTargetA = this._createBlurTarget();
+        if (!this._blurTargetB) this._blurTargetB = this._createBlurTarget();
+        this._resizeBlurTarget(this._blurTargetA, w, h);
+        this._resizeBlurTarget(this._blurTargetB, w, h);
+    }
+
+    _createBlurTarget() {
+        const gl = this.gl;
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        const framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        return { texture, framebuffer, width: 0, height: 0 };
+    }
+
+    _resizeBlurTarget(target, w, h) {
+        if (target.width === w && target.height === h) return;
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, target.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        target.width = w;
+        target.height = h;
+    }
+    // ── 블러 파이프라인 끝 ───────────────────────────────────────────
 
     // fillColor_ 값을 u_color 유니폼에 반영한다. 0~1 범위가 아니면(0~255로 준 경우)
     // 정규화한다. drawImage와 텍스트 배치 렌더링(_drawGlyphBatch)이 공유해서 쓴다.
@@ -638,6 +858,7 @@ export class core {
         const page = this.atlasPages[pageIndex];
 
         gl.uniform2f(this.resolutionLocation, gl.canvas.width, gl.canvas.height);
+        gl.uniform1f(this.flipYLocation, 1.0); // 캔버스에 직접 그리는 경로이므로 항상 켜둔다
         this._applyFillColorUniform(colorRGB);
         gl.uniform1f(this.alphaLocation, 1.0);
 
@@ -726,6 +947,22 @@ export class core {
             gl.deleteTexture(page.texture);
         }
         this.atlasPages.length = 0;
+
+        // 블러 파이프라인 리소스 정리
+        if (this._blurTargetA) {
+            gl.deleteTexture(this._blurTargetA.texture);
+            gl.deleteFramebuffer(this._blurTargetA.framebuffer);
+            this._blurTargetA = null;
+        }
+        if (this._blurTargetB) {
+            gl.deleteTexture(this._blurTargetB.texture);
+            gl.deleteFramebuffer(this._blurTargetB.framebuffer);
+            this._blurTargetB = null;
+        }
+        if (this.blurProgram) {
+            gl.deleteProgram(this.blurProgram);
+        }
+
         gl.deleteBuffer(this.positionBuffer);
         gl.deleteBuffer(this.texcoordBuffer);
         gl.deleteProgram(this.program);

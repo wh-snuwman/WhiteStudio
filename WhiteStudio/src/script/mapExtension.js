@@ -1,24 +1,20 @@
 import { random } from "./random.js"
 import {log} from './Log.js'
-
+import { wing } from "./networkManager.js"
 
 
 class mapObject{
-    constructor(name){
+    constructor(name,studio){
+        this.studio = studio
         this.name = name
         this.chunk = {}
         this.chunkSize = 0
-        this.startMapSize = 10
+        // this.startMapSize = 10
         this.isInfinite = true
         this.mapSize = [10,10]
-        this.initLoadComplete = false
-        this.terrainBuildFunc = ()  => {}
-    }
-
-    build(){
-        log.Info('map build start...')
-        this.initLoadComplete = true
-        log.Info('map first build complete :',this.name)
+        this.terrainBuildFunc = ()  => {}   
+        this.requestChunkList = []
+        this.requestChunkFunc = () => {}
     }
 
 
@@ -28,8 +24,18 @@ class mapObject{
 
 
     requestNewChunk(chunkId){
+        if (this.requestChunkList.includes(chunkId)) return
+        log.Dev(`청크요청 수락함 ${chunkId}`)
+        this.requestChunkList.push(chunkId)
         this.newChunk(chunkId)
+        this.requestChunkFunc(chunkId)
     }
+
+
+    requestChunk(func){
+        this.requestChunkFunc = func
+    }
+
 
     isExistChunk(chunkId){
         return chunkId in this.chunk 
@@ -48,11 +54,16 @@ class mapObject{
 
     }
 
-    editTile(){
 
+    setChunk(chunkId,data){
+        if (!this.isExistChunk(chunkId)) return
+        this.chunk[chunkId] = data
     }
-    getTileDate(){
 
+
+    setTile(chunkId,innerId,tile){
+        if (!this.isExistChunk(chunkId)) {log.Error('청크가 존재하지 않음! 수정 거부됨');return;}
+        this.chunk[chunkId][innerId] = tile
     }
 }
 
@@ -63,25 +74,23 @@ export class mapExtension{
         this.tile = tile
         this.studio = studio
         this.maps = {}
-        this.Map
-        this.chunkSize = 16
+        this.chunkSize = 8
         this.nowMap = ''
-
         this.tile._mapReload((tileObj)=>{
             tileObj.chunkInnerId = this._mod(tileObj.verNum,this.chunkSize) * this.chunkSize + this._mod(tileObj.horNum, this.chunkSize)
             tileObj.chunkId = [Math.floor(tileObj.horNum / this.chunkSize),Math.floor(tileObj.verNum / this.chunkSize)]
             
             if (Object.keys(this.maps).includes(this.nowMap)){
-                
                 const mapObj = this.maps[this.nowMap]
 
-                if (mapObj.initLoadComplete){
-                    if (mapObj.isExistChunk(tileObj.chunkId)){ //청크있음
-                        tileObj.tile = mapObj.chunk[tileObj.chunkId][tileObj.chunkInnerId]
-                    } else{ // 청크없음
-                        mapObj.requestNewChunk(tileObj.chunkId)
-                        tileObj.tile = null
-                    }
+                if (!mapObj.isExistChunk(tileObj.chunkId)){
+                    mapObj.requestNewChunk(tileObj.chunkId)
+                }
+
+                if (mapObj.isExistChunk(tileObj.chunkId)){
+                    tileObj.tile = mapObj.chunk[tileObj.chunkId][tileObj.chunkInnerId]
+                } else {
+                    tileObj.tile = null
                 }
             }
         
@@ -100,7 +109,7 @@ export class mapExtension{
 
     new(name){
         if (!name) return
-        const mobj = new mapObject(name)
+        const mobj = new mapObject(name,this.studio)
         mobj.chunkSize = this.chunkSize
         this.maps[name] = mobj
         return mobj
@@ -111,8 +120,5 @@ export class mapExtension{
         return name
     }
 
-    get(){
-
-    }
 
 }
