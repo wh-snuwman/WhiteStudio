@@ -22,22 +22,40 @@ export class textObject{
         this.screenRatio = ratio
     }
 
+    getMetrics() {
+        const core = this.app?.core || this.app;
+        if (core && typeof core.measureText === 'function') {
+            return core.measureText(this.text, this.size, this.font);
+        }
+        return { width: 0, height: 0 };
+    }
+
+    get width() {
+        return this.getMetrics().width;
+    }
+
+    get height() {
+        return this.getMetrics().height;
+    }
+
+    get renderWidth() {
+        return this.width * this.screenRatio;
+    }
+
+    get renderHeight() {
+        return this.height * this.screenRatio;
+    }
 
     goto(pos){
         this.x = pos[0]
         this.y = pos[1]
         this.pos = pos
-        // this.renderX = this.x * this.screenRatio;
-        // this.renderY = this.y * this.screenRatio;
-        
     }
 
     move(offset){
         this.x += offset[0]
         this.y += offset[1]
         this.pos = [this.x,this.y]
-        
-        
     }
 
     cameraMove(camera){
@@ -46,31 +64,23 @@ export class textObject{
 
     _updateInit(){
         this.isRender = false
-        
-        
     } 
-
 
     ratioSet(ratio){
         this.screenRatio = ratio 
     }
-
 
     render(){
         this.isRender = true
         this.renderX = this.x * this.screenRatio;
         this.renderY = this.y * this.screenRatio;
     }
-    
 }
-
-
 
 export class textManager{
     constructor(studio){
         this.studio = studio
         this.app = studio.app
-        // this.tobjs = []
     }
 
     object(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left'){
@@ -78,9 +88,5 @@ export class textManager{
         this.studio.objectList.push(tobj)
         tobj.init(this.app,this.studio.screenRatio)
         return tobj
-
     }
-
 }
-
-

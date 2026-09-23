@@ -8,7 +8,7 @@ WebGL2 기반 2D 게임/그래픽 엔진입니다. Canvas 하나에 씬(scene), 
 - **오브젝트 시스템**: 위치·크기·회전·정점(vertex) 단위로 제어되는 렌더 오브젝트 (`object.js`)
 - **씬(Scene) 기반 구조**: 씬별 업데이트/렌더 루프 분리, 화면 리사이즈 자동 대응
 - **카메라**: 오프셋 이동, 특정 오브젝트 트래킹(부드러운 추적) 지원 (`cameraManager.js`)
-- **타일맵**: 무한 스크롤 타일, 청크(chunk) 단위 지형 생성, 타일 블로킹(충돌) 처리 (`tileManager.js`, `mapExtension.js`)
+- **타일맵**: 무한 스크롤 타일, 청크(chunk) 단위 지형 생성, 타일 블로킹(충돌) 처리 (`tileManager.js`, `m apExtension.js`)
 - **엔티티 시스템**: 플레이어/오브젝트 생성, 히트박스, 이동, 네트워크 동기화 (`entityExtension.js`)
 - **모션/애니메이션 관리**: 이벤트 기반 프레임 애니메이션, 오프셋/뒤집기 처리 (`motionManager.js`)
 - **파티클 시스템**: 타입별 파티클 생성 및 수명 관리 (`particleExtension.js`)

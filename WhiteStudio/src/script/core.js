@@ -792,7 +792,27 @@ export class core {
 
         return glyphInfo;
     }
+    measureText(text, size = '20px', font = null) {
+        if (!text) return { width: 0, height: 0 };
 
+        const sizeNum = Math.round(convertToPx(size));
+        const fontName = (typeof font === 'string') ? font : 'serif';
+        const fontStr = `${sizeNum}px ${fontName}`;
+
+        let totalWidth = 0;
+        let maxHeight = 0;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const glyph = this._cacheGlyph(char, fontStr, sizeNum);
+            if (glyph) {
+                totalWidth += glyph.width;
+                if (glyph.height > maxHeight) maxHeight = glyph.height;
+            }
+        }
+
+        return { width: totalWidth, height: maxHeight };
+    }
     text(text, pos = [0, 0], size = '20px', color = 'black', font = null, align = 'left') {
         if (!text) return;
 
